@@ -7,10 +7,36 @@ import { env } from '../config/env';
 import * as schema from './schema';
 
 async function seed() {
+  // ⚠️  SECURITY WARNING ─────────────────────────────────────────────────────
+  // This seed script creates accounts with hardcoded credentials:
+  //   admin@voxa.dev / admin123
+  //   test@voxa.dev  / test123
+  //
+  // These are DEVELOPMENT/TEST credentials ONLY.
+  // NEVER run this script against a production database.
+  // Running it in production will:
+  //   • expose a known admin account with a trivially guessable password
+  //   • allow anyone with knowledge of these credentials to gain full admin access
+  //
+  // If you accidentally ran this in production:
+  //   1. Immediately change the admin password via the admin panel or SQL
+  //   2. Rotate all API keys and JWT secrets
+  //   3. Review audit logs for unauthorised access
+  // ──────────────────────────────────────────────────────────────────────────
+  if (env.NODE_ENV === 'production') {
+    console.error(
+      '❌ SECURITY: Refusing to run seed script in NODE_ENV=production.\n' +
+        '   This script creates accounts with hardcoded credentials.\n' +
+        '   Set NODE_ENV=development or use a dedicated migration for production data.',
+    );
+    process.exit(1);
+  }
+
   const pool = new Pool({ connectionString: env.DATABASE_URL });
   const db = drizzle(pool, { schema });
 
   console.log('🌱 Starting seed...');
+  console.warn('⚠️  WARNING: Seeding with hardcoded credentials. DO NOT run this in production.');
 
   // ─── Admin user ─────────────────────────────────────────────────────────────
   const adminPasswordHash = await bcrypt.hash('admin123', 10);
