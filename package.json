@@ -16,7 +16,8 @@
     "format": "biome format --write .",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
-    "db:studio": "drizzle-kit studio"
+    "db:studio": "drizzle-kit studio",
+    "db:seed": "tsx src/db/seed.ts"
   },
   "dependencies": {
     "@types/bcryptjs": "^2.4.6",
