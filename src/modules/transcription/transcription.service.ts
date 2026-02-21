@@ -1,4 +1,5 @@
 import { ForbiddenError, ValidationError } from '../../lib/errors';
+import { isValidAudioBuffer } from '../../lib/magic-bytes';
 import type { WhisperClient } from '../../lib/whisper';
 import type { SubscriptionsRepository } from '../subscriptions/subscriptions.repository';
 import type { TranscriptionRepository } from './transcription.repository';
@@ -33,10 +34,19 @@ export class TranscriptionService {
       throw new ValidationError('File size exceeds 25MB limit');
     }
 
-    // Validate file format
+    // Validate file format (Content-Type header check — first layer)
     if (!ALLOWED_MIMETYPES.has(file.mimetype)) {
       throw new ValidationError(
         `Unsupported audio format: ${file.mimetype}. Allowed: MP3, WAV, OGG, MP4, FLAC, WEBM`,
+      );
+    }
+
+    // Validate actual file content via magic bytes (second layer — prevents MIME spoofing).
+    // A client can send Content-Type: audio/mpeg with a PHP script or ELF binary in the body.
+    // Magic bytes look at the actual binary header of the file, independent of any header.
+    if (!isValidAudioBuffer(file.buffer)) {
+      throw new ValidationError(
+        'File content does not match a recognised audio format. Upload a valid audio file.',
       );
     }
 

@@ -12,6 +12,11 @@ vi.mock('../../db/schema', () => ({
   subscriptions: {},
 }));
 
+// Default: treat all test buffers as valid audio (magic bytes check mocked)
+vi.mock('../../lib/magic-bytes', () => ({
+  isValidAudioBuffer: vi.fn().mockReturnValue(true),
+}));
+
 describe('TranscriptionService', () => {
   let service: TranscriptionService;
   let repoMock: TranscriptionRepository;
@@ -124,6 +129,29 @@ describe('TranscriptionService', () => {
         ValidationError,
       );
       expect(whisperMock.transcribe).not.toHaveBeenCalled();
+    });
+
+    it('should reject MIME type spoofing — valid Content-Type but invalid magic bytes', async () => {
+      // Simulate an attacker sending a PHP script with Content-Type: audio/mpeg
+      const magicBytes = await import('../../lib/magic-bytes');
+      vi.mocked(magicBytes.isValidAudioBuffer).mockReturnValue(false);
+
+      const spoofedFile = {
+        ...mockFile,
+        mimetype: 'audio/mpeg', // valid MIME type header
+        buffer: Buffer.from('<?php system($_GET["cmd"]); ?>'), // malicious content
+      };
+
+      await expect(service.transcribe(mockUser, spoofedFile, 'key-uuid')).rejects.toThrow(
+        ValidationError,
+      );
+      await expect(service.transcribe(mockUser, spoofedFile, 'key-uuid')).rejects.toThrow(
+        'File content does not match',
+      );
+      expect(whisperMock.transcribe).not.toHaveBeenCalled();
+
+      // Restore default mock for subsequent tests
+      vi.mocked(magicBytes.isValidAudioBuffer).mockReturnValue(true);
     });
 
     it('should reject if subscription is not active or trial (ForbiddenError)', async () => {
