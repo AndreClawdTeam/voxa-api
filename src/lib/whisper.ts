@@ -27,15 +27,19 @@ export class WhisperClient {
 
   private async runWhisper(filePath: string): Promise<WhisperResult> {
     return new Promise((resolve, reject) => {
+      // SECURITY: filePath is passed as sys.argv[1] — NOT interpolated into the script string.
+      // Interpolating user-controlled (or even system-generated) paths into Python source code
+      // is a code injection pattern. Passing it as an argument is the safe approach.
       const script = `
 import json, sys
 from faster_whisper import WhisperModel
+audio_path = sys.argv[1]
 model = WhisperModel("small", device="cpu", compute_type="int8")
-segments, info = model.transcribe("${filePath}", beam_size=5)
+segments, info = model.transcribe(audio_path, beam_size=5)
 text = " ".join(s.text.strip() for s in segments)
 print(json.dumps({"text": text, "language": info.language, "confidence": float(info.language_probability), "durationSeconds": float(info.duration)}))
 `;
-      const proc = spawn(env.WHISPER_PYTHON, ['-c', script]);
+      const proc = spawn(env.WHISPER_PYTHON, ['-c', script, filePath]);
       let stdout = '';
       let stderr = '';
       proc.stdout.on('data', (d) => {
