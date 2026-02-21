@@ -24,6 +24,25 @@ export class TranscriptionService {
     private readonly subscriptionsRepo: SubscriptionsRepository,
   ) {}
 
+  /**
+   * Transcreve um arquivo de áudio usando o faster-whisper.
+   *
+   * Realiza três camadas de validação antes de chamar o Whisper:
+   * 1. Tamanho do arquivo (máx. 25 MB)
+   * 2. Content-Type (MIME type no header da requisição)
+   * 3. Magic bytes (conteúdo binário real — previne MIME spoofing)
+   *
+   * Após validar, verifica se a assinatura do usuário está ativa.
+   * Cria um registro de transcrição com status `processing`, chama o Whisper,
+   * atualiza o registro com o resultado e registra um usage log.
+   *
+   * @param user - Usuário autenticado (com `userId` e `role`)
+   * @param file - Arquivo de áudio recebido via multipart (`req.file`)
+   * @param apiKeyId - ID da API key usada para autenticar a requisição
+   * @returns Registro de transcrição completo
+   * @throws {ValidationError} Se o arquivo for muito grande, formato inválido ou conteúdo incorreto
+   * @throws {ForbiddenError} Se a assinatura estiver inativa, cancelada ou trial expirado
+   */
   async transcribe(
     user: { userId: string; role: string },
     file: Express.Multer.File,
@@ -110,7 +129,7 @@ export class TranscriptionService {
 
       return completed;
     } catch (error) {
-      // Update transcription with error
+      // Update transcription with error status before rethrowing
       await this.transcriptionRepo.update(transcription.id, {
         status: 'failed',
         errorMessage: error instanceof Error ? error.message : 'Unknown error',

@@ -13,6 +13,13 @@ import type { LoginDto, RegisterDto } from './auth.schema';
 export class AuthService {
   constructor(private readonly authRepo: AuthRepository) {}
 
+  /**
+   * Registra um novo usuário e cria automaticamente uma assinatura trial.
+   *
+   * @param data - Dados de cadastro (nome, email, senha em plaintext)
+   * @returns Perfil público do usuário + tokens de acesso e refresh
+   * @throws {ConflictError} Se o email já estiver cadastrado
+   */
   async register(data: RegisterDto) {
     const existing = await this.authRepo.findByEmail(data.email);
     if (existing) {
@@ -56,6 +63,13 @@ export class AuthService {
     };
   }
 
+  /**
+   * Autentica o usuário com email e senha, retornando novos tokens JWT.
+   *
+   * @param data - Credenciais de login (email e senha em plaintext)
+   * @returns Par de tokens `{ accessToken, refreshToken }`
+   * @throws {UnauthorizedError} Se as credenciais estiverem incorretas
+   */
   async login(data: LoginDto) {
     const user = await this.authRepo.findByEmail(data.email);
     if (!user) {
@@ -73,12 +87,18 @@ export class AuthService {
     return { accessToken, refreshToken };
   }
 
+  /**
+   * Renova o access token usando um refresh token válido (não expirado e não revogado).
+   *
+   * @param token - Refresh token JWT
+   * @returns Novo `{ accessToken }`
+   * @throws {UnauthorizedError} Se o token for inválido, expirado ou revogado
+   */
   async refreshToken(token: string) {
     // verifyRefreshToken validates iss/aud, expiry, AND checks the jti blacklist
     const payload = verifyRefreshToken(token);
-    const userId = payload.userId as string;
 
-    const user = await this.authRepo.findById(userId);
+    const user = await this.authRepo.findById(payload.userId);
     if (!user) {
       throw new UnauthorizedError('User not found');
     }
@@ -87,10 +107,16 @@ export class AuthService {
     return { accessToken };
   }
 
+  /**
+   * Invalida o refresh token no servidor (blacklist por jti) e encerra a sessão.
+   *
+   * O access token permanece válido até expirar (curto prazo). O cliente deve descartá-lo.
+   *
+   * @param _userId - ID do usuário fazendo logout (para auditoria futura)
+   * @param refreshToken - Refresh token a invalidar (opcional; sem ele apenas o cliente descarta)
+   * @returns `{ success: true }`
+   */
   async logout(_userId: string, refreshToken?: string) {
-    // Blacklist the refresh token's jti so it cannot be reused after logout.
-    // Access tokens are short-lived (15m) and remain valid until they expire —
-    // clients must discard them on logout.
     if (refreshToken) {
       try {
         const payload = verifyRefreshToken(refreshToken);

@@ -1,7 +1,7 @@
 import type { NextFunction, Request, Response } from 'express';
 import { z } from 'zod';
-import { ValidationError } from '../../lib/errors';
-import type { AuthenticatedRequest } from '../../middleware/authenticate';
+import { requireUser, sendCreated, sendSuccess } from '../../lib/http';
+import { parseBody, parseParams } from '../../lib/validation';
 import type { ApiKeysService } from './api-keys.service';
 
 const createKeySchema = z.object({
@@ -15,18 +15,19 @@ const revokeKeySchema = z.object({
 export class ApiKeysController {
   constructor(private readonly apiKeysService: ApiKeysService) {}
 
-  async create(req: Request, res: Response, next: NextFunction) {
+  /**
+   * POST /keys — Cria uma nova API key para o usuário autenticado.
+   * O `rawToken` é exibido **apenas nesta resposta** e não é armazenado em plaintext.
+   */
+  async create(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const authReq = req as AuthenticatedRequest;
-      const parsed = createKeySchema.safeParse(req.body);
-      if (!parsed.success) {
-        throw new ValidationError(parsed.error.errors[0]?.message ?? 'Validation failed');
-      }
+      const { userId } = requireUser(req);
+      const { label } = parseBody(createKeySchema, req);
+      const result = await this.apiKeysService.createKey(userId, label);
 
-      const result = await this.apiKeysService.createKey(authReq.user.userId, parsed.data.label);
-
-      return res.status(201).json({
-        data: {
+      sendCreated(
+        res,
+        {
           id: result.id,
           userId: result.userId,
           label: result.label,
@@ -35,37 +36,39 @@ export class ApiKeysController {
           createdAt: result.createdAt,
           rawToken: result.rawToken,
         },
-        message: 'API key created. Save the rawToken — it will not be shown again.',
-      });
+        'API key created. Save the rawToken — it will not be shown again.',
+      );
     } catch (error) {
-      return next(error);
+      next(error);
     }
   }
 
-  async list(req: Request, res: Response, next: NextFunction) {
+  /**
+   * GET /keys — Lista todas as API keys do usuário autenticado.
+   * Os hashes das keys não são retornados.
+   */
+  async list(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const authReq = req as AuthenticatedRequest;
-      const keys = await this.apiKeysService.listKeys(authReq.user.userId);
-
-      return res.status(200).json({ data: keys });
+      const { userId } = requireUser(req);
+      const keys = await this.apiKeysService.listKeys(userId);
+      sendSuccess(res, keys);
     } catch (error) {
-      return next(error);
+      next(error);
     }
   }
 
-  async revoke(req: Request, res: Response, next: NextFunction) {
+  /**
+   * DELETE /keys/:id — Revoga uma API key do usuário autenticado.
+   * Retorna 403 se a key não pertencer ao usuário.
+   */
+  async revoke(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const authReq = req as AuthenticatedRequest;
-      const parsed = revokeKeySchema.safeParse(req.params);
-      if (!parsed.success) {
-        throw new ValidationError(parsed.error.errors[0]?.message ?? 'Validation failed');
-      }
-
-      await this.apiKeysService.revokeKey(parsed.data.id, authReq.user.userId);
-
-      return res.status(200).json({ message: 'API key revoked successfully' });
+      const { userId } = requireUser(req);
+      const { id } = parseParams(revokeKeySchema, req);
+      await this.apiKeysService.revokeKey(id, userId);
+      res.status(200).json({ message: 'API key revoked successfully' });
     } catch (error) {
-      return next(error);
+      next(error);
     }
   }
 }

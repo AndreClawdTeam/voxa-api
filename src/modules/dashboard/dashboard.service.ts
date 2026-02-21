@@ -51,6 +51,13 @@ export interface UpdateProfileDto {
 export class DashboardService {
   constructor(private readonly repo: DashboardRepository) {}
 
+  /**
+   * Retorna o resumo de uso de transcrição do usuário (total e do mês atual).
+   * Converte segundos em minutos. Inclui dados da assinatura atual.
+   *
+   * @param userId - ID do usuário
+   * @returns Resumo de uso com totais e dados da assinatura
+   */
   async getUsageSummary(userId: string): Promise<UsageSummary> {
     const data = await this.repo.getUsageSummary(userId);
 
@@ -68,6 +75,15 @@ export class DashboardService {
     };
   }
 
+  /**
+   * Retorna o histórico paginado de transcrições do usuário.
+   * Calcula o total de páginas com base no total de registros.
+   *
+   * @param userId - ID do usuário
+   * @param page - Número da página (começa em 1)
+   * @param limit - Quantidade de itens por página
+   * @returns Dados paginados com `data`, `total`, `page` e `totalPages`
+   */
   async getTranscriptionHistory(
     userId: string,
     page: number,
@@ -83,6 +99,14 @@ export class DashboardService {
     };
   }
 
+  /**
+   * Retorna o perfil do usuário autenticado, excluindo o `passwordHash`.
+   * Inclui dados da assinatura atual.
+   *
+   * @param userId - ID do usuário
+   * @returns Perfil público com dados de assinatura
+   * @throws {Error} Se o usuário não for encontrado (situação inesperada)
+   */
   async getProfile(userId: string): Promise<UserProfile> {
     const result = await this.repo.getProfile(userId);
 
@@ -110,6 +134,16 @@ export class DashboardService {
     };
   }
 
+  /**
+   * Atualiza nome e/ou email do usuário autenticado.
+   * O `passwordHash` é excluído da resposta.
+   *
+   * @param userId - ID do usuário
+   * @param data - Campos a atualizar (ao menos um obrigatório: `name` ou `email`)
+   * @returns Perfil atualizado sem `passwordHash`
+   * @throws {ValidationError} Se nenhum campo for informado
+   * @throws {Error} Se o usuário não for encontrado
+   */
   async updateProfile(userId: string, data: UpdateProfileDto): Promise<SafeUser> {
     if (!data.name && !data.email) {
       throw new ValidationError('At least one field (name or email) must be provided');

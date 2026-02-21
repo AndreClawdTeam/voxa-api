@@ -1,7 +1,7 @@
 import type { NextFunction, Request, Response } from 'express';
 import { z } from 'zod';
-import { ValidationError } from '../../lib/errors';
-import type { AuthenticatedRequest } from '../../middleware/authenticate';
+import { requireUser, sendSuccess, sendSuccessWithMessage } from '../../lib/http';
+import { parseBody } from '../../lib/validation';
 import type { SubscriptionsService } from './subscriptions.service';
 
 const upgradePlanSchema = z.object({
@@ -13,46 +13,45 @@ const upgradePlanSchema = z.object({
 export class SubscriptionsController {
   constructor(private readonly subscriptionsService: SubscriptionsService) {}
 
-  async getMySubscription(req: Request, res: Response, next: NextFunction) {
+  /**
+   * GET /subscriptions/me — Retorna a assinatura atual do usuário autenticado.
+   */
+  async getMySubscription(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const authReq = req as AuthenticatedRequest;
-      const subscription = await this.subscriptionsService.getMySubscription(authReq.user.userId);
-
-      return res.status(200).json({ data: subscription });
+      const { userId } = requireUser(req);
+      const subscription = await this.subscriptionsService.getMySubscription(userId);
+      sendSuccess(res, subscription);
     } catch (error) {
-      return next(error);
+      next(error);
     }
   }
 
-  async upgrade(req: Request, res: Response, next: NextFunction) {
+  /**
+   * PATCH /subscriptions/upgrade — Faz upgrade do plano para `basic` ou `pro`.
+   * Retorna 409 se o usuário já está no tier solicitado.
+   */
+  async upgrade(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const authReq = req as AuthenticatedRequest;
-      const parsed = upgradePlanSchema.safeParse(req.body);
-      if (!parsed.success) {
-        throw new ValidationError(parsed.error.errors[0]?.message ?? 'Validation failed');
-      }
-
-      const subscription = await this.subscriptionsService.upgradePlan(
-        authReq.user.userId,
-        parsed.data.tier,
-      );
-
-      return res
-        .status(200)
-        .json({ data: subscription, message: `Upgraded to ${parsed.data.tier} plan` });
+      const { userId } = requireUser(req);
+      const { tier } = parseBody(upgradePlanSchema, req);
+      const subscription = await this.subscriptionsService.upgradePlan(userId, tier);
+      sendSuccessWithMessage(res, subscription, `Upgraded to ${tier} plan`);
     } catch (error) {
-      return next(error);
+      next(error);
     }
   }
 
-  async cancel(req: Request, res: Response, next: NextFunction) {
+  /**
+   * DELETE /subscriptions/cancel — Cancela a assinatura do usuário autenticado.
+   * Retorna 404 se não houver assinatura ativa.
+   */
+  async cancel(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const authReq = req as AuthenticatedRequest;
-      const subscription = await this.subscriptionsService.cancelSubscription(authReq.user.userId);
-
-      return res.status(200).json({ data: subscription, message: 'Subscription cancelled' });
+      const { userId } = requireUser(req);
+      const subscription = await this.subscriptionsService.cancelSubscription(userId);
+      sendSuccessWithMessage(res, subscription, 'Subscription cancelled');
     } catch (error) {
-      return next(error);
+      next(error);
     }
   }
 }

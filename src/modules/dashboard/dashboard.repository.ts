@@ -28,6 +28,13 @@ export interface ProfileData {
 }
 
 export class DashboardRepository {
+  /**
+   * Agrega estatísticas de uso do usuário: total de transcrições e segundos transcritos
+   * (all-time e mês atual). Também retorna a assinatura atual.
+   *
+   * @param userId - ID do usuário
+   * @returns Dados de uso agregados com assinatura
+   */
   async getUsageSummary(userId: string): Promise<UsageSummaryData> {
     // All-time aggregates
     const [allTime] = await db
@@ -67,6 +74,13 @@ export class DashboardRepository {
     };
   }
 
+  /**
+   * Retorna o histórico paginado de transcrições do usuário, ordenado por data decrescente.
+   *
+   * @param userId - ID do usuário
+   * @param options - Paginação: `page` e `limit`
+   * @returns Página de transcrições com total de registros
+   */
   async getTranscriptionHistory(
     userId: string,
     options: { page: number; limit: number },
@@ -89,6 +103,12 @@ export class DashboardRepository {
     return { data, total: count ?? 0 };
   }
 
+  /**
+   * Retorna o perfil completo do usuário com assinatura.
+   *
+   * @param userId - ID do usuário
+   * @returns `{ user, subscription }` ou `null` se o usuário não existir
+   */
   async getProfile(userId: string): Promise<ProfileData | null> {
     const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
 
@@ -103,6 +123,13 @@ export class DashboardRepository {
     return { user, subscription: subscription ?? null };
   }
 
+  /**
+   * Atualiza nome e/ou email do usuário.
+   *
+   * @param userId - ID do usuário a atualizar
+   * @param data - Campos a atualizar (`name` e/ou `email`)
+   * @returns Usuário atualizado ou `null` se não encontrado
+   */
   async updateProfile(
     userId: string,
     data: { name?: string; email?: string },
@@ -116,6 +143,12 @@ export class DashboardRepository {
     return updated ?? null;
   }
 
+  /**
+   * Busca um usuário pelo UUID.
+   *
+   * @param userId - ID do usuário
+   * @returns Usuário encontrado ou `undefined`
+   */
   async findUserById(userId: string): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
     return user;

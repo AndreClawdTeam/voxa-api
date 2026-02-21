@@ -4,6 +4,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { env } from '../config/env';
 
+/** Resultado retornado pelo faster-whisper após transcrição. */
 export interface WhisperResult {
   text: string;
   language: string;
@@ -11,7 +12,22 @@ export interface WhisperResult {
   durationSeconds: number;
 }
 
+/**
+ * Cliente para transcrição de áudio usando o faster-whisper (modelo `small`, CPU).
+ *
+ * Escreve o buffer de áudio em um arquivo temporário, executa o Python com o script
+ * do faster-whisper passando o caminho como argumento (não interpolado no script —
+ * prevenção de code injection), e remove o arquivo ao terminar.
+ */
 export class WhisperClient {
+  /**
+   * Transcreve um buffer de áudio.
+   *
+   * @param buffer - Buffer binário do arquivo de áudio
+   * @param mimetype - MIME type do áudio (usado para determinar a extensão do arquivo temporário)
+   * @returns Resultado da transcrição com texto, idioma, confiança e duração
+   * @throws {Error} Se o processo Whisper falhar ou retornar output inválido
+   */
   async transcribe(buffer: Buffer, mimetype: string): Promise<WhisperResult> {
     const ext = this.getExtension(mimetype);
     const tmpPath = path.join(os.tmpdir(), `voxa_${Date.now()}.${ext}`);
@@ -25,6 +41,16 @@ export class WhisperClient {
     }
   }
 
+  /**
+   * Executa o script Python do faster-whisper em um processo filho.
+   *
+   * O caminho do arquivo é passado como `sys.argv[1]` — nunca interpolado no código Python.
+   * Isso previne injeção de código caso o caminho contenha caracteres especiais.
+   *
+   * @param filePath - Caminho absoluto do arquivo de áudio temporário
+   * @returns Resultado da transcrição parseado do JSON produzido pelo script
+   * @throws {Error} Se o processo falhar (exit code ≠ 0) ou o output não for JSON válido
+   */
   private async runWhisper(filePath: string): Promise<WhisperResult> {
     return new Promise((resolve, reject) => {
       // SECURITY: filePath is passed as sys.argv[1] — NOT interpolated into the script string.
@@ -59,6 +85,13 @@ print(json.dumps({"text": text, "language": info.language, "confidence": float(i
     });
   }
 
+  /**
+   * Mapeia um MIME type para a extensão de arquivo correspondente.
+   * Usado para nomear o arquivo temporário gravado antes de chamar o Whisper.
+   *
+   * @param mimetype - MIME type do áudio
+   * @returns Extensão de arquivo (sem ponto), ex.: `'mp3'`, `'wav'`
+   */
   private getExtension(mimetype: string): string {
     const map: Record<string, string> = {
       'audio/mpeg': 'mp3',

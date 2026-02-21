@@ -1,15 +1,10 @@
 import type { NextFunction, Request, Response } from 'express';
 import { z } from 'zod';
-import { ValidationError } from '../../lib/errors';
-import type { AuthenticatedRequest } from '../../middleware/authenticate';
+import { requireUser, sendPaginated, sendSuccess } from '../../lib/http';
+import { paginationSchema, parseBody, parseQuery } from '../../lib/validation';
 import type { DashboardService } from './dashboard.service';
 
-const PaginationSchema = z.object({
-  page: z.string().transform(Number).pipe(z.number().int().positive()).default('1'),
-  limit: z.string().transform(Number).pipe(z.number().int().min(1).max(100)).default('20'),
-});
-
-const UpdateProfileSchema = z.object({
+const updateProfileSchema = z.object({
   name: z.string().min(1).max(255).optional(),
   email: z.string().email().optional(),
 });
@@ -17,65 +12,65 @@ const UpdateProfileSchema = z.object({
 export class DashboardController {
   constructor(private readonly service: DashboardService) {}
 
-  async getUsage(req: Request, res: Response, next: NextFunction) {
+  /**
+   * GET /dashboard/usage — Resumo de uso total e mensal do usuário autenticado.
+   */
+  async getUsage(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const { userId } = (req as AuthenticatedRequest).user;
+      const { userId } = requireUser(req);
       const summary = await this.service.getUsageSummary(userId);
-      return res.json({ data: summary });
+      sendSuccess(res, summary);
     } catch (error) {
-      return next(error);
+      next(error);
     }
   }
 
-  async getTranscriptions(req: Request, res: Response, next: NextFunction) {
+  /**
+   * GET /dashboard/transcriptions — Histórico paginado de transcrições do usuário.
+   * Query params: `page` (default 1), `limit` (default 20, max 100).
+   */
+  async getTranscriptions(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const { userId } = (req as AuthenticatedRequest).user;
-
-      const parsed = PaginationSchema.safeParse(req.query);
-      if (!parsed.success) {
-        return next(new ValidationError('Invalid pagination parameters'));
-      }
-
-      const { page, limit } = parsed.data;
+      const { userId } = requireUser(req);
+      const { page, limit } = parseQuery(paginationSchema, req);
       const result = await this.service.getTranscriptionHistory(userId, page, limit);
 
-      return res.json({
-        data: result.data,
-        pagination: {
-          page: result.page,
-          limit,
-          total: result.total,
-          totalPages: result.totalPages,
-        },
+      sendPaginated(res, result.data, {
+        page: result.page,
+        limit,
+        total: result.total,
+        totalPages: result.totalPages,
       });
     } catch (error) {
-      return next(error);
+      next(error);
     }
   }
 
-  async getProfile(req: Request, res: Response, next: NextFunction) {
+  /**
+   * GET /dashboard/profile — Retorna o perfil do usuário autenticado (sem passwordHash).
+   */
+  async getProfile(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const { userId } = (req as AuthenticatedRequest).user;
+      const { userId } = requireUser(req);
       const profile = await this.service.getProfile(userId);
-      return res.json({ data: profile });
+      sendSuccess(res, profile);
     } catch (error) {
-      return next(error);
+      next(error);
     }
   }
 
-  async updateProfile(req: Request, res: Response, next: NextFunction) {
+  /**
+   * PATCH /dashboard/profile — Atualiza nome e/ou email do usuário autenticado.
+   * Ao menos um campo deve ser informado.
+   */
+  async updateProfile(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const { userId } = (req as AuthenticatedRequest).user;
-
-      const parsed = UpdateProfileSchema.safeParse(req.body);
-      if (!parsed.success) {
-        return next(new ValidationError('Invalid profile data'));
-      }
-
-      const updated = await this.service.updateProfile(userId, parsed.data);
-      return res.json({ data: updated });
+      const { userId } = requireUser(req);
+      const data = parseBody(updateProfileSchema, req);
+      const updated = await this.service.updateProfile(userId, data);
+      sendSuccess(res, updated);
     } catch (error) {
-      return next(error);
+      next(error);
     }
   }
 }

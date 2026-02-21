@@ -2,30 +2,32 @@ import type { NextFunction, Request, Response } from 'express';
 import { UnauthorizedError } from '../lib/errors';
 import { verifyToken } from '../lib/jwt';
 
-export interface AuthenticatedRequest extends Request {
-  user: {
-    userId: string;
-    role: string;
-  };
-}
-
-export function authenticate(req: Request, _res: Response, next: NextFunction) {
+/**
+ * Middleware de autenticação JWT (Bearer token).
+ *
+ * Extrai o token do header `Authorization: Bearer <token>`, verifica a assinatura,
+ * expiração, issuer e audience, e injeta `req.user` com `userId` e `role`.
+ *
+ * @throws {UnauthorizedError} Se o header estiver ausente, malformado ou o token inválido
+ */
+export function authenticate(req: Request, _res: Response, next: NextFunction): void {
   const authHeader = req.headers.authorization;
 
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return next(new UnauthorizedError('Missing or invalid authorization header'));
+  if (!authHeader?.startsWith('Bearer ')) {
+    next(new UnauthorizedError('Missing or invalid authorization header'));
+    return;
   }
 
   const token = authHeader.slice(7);
 
   try {
     const payload = verifyToken(token);
-    (req as AuthenticatedRequest).user = {
-      userId: payload.userId as string,
-      role: payload.role as string,
+    req.user = {
+      userId: payload.userId,
+      role: payload.role,
     };
-    return next();
+    next();
   } catch (error) {
-    return next(error);
+    next(error);
   }
 }

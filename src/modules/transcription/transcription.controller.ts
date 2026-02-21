@@ -1,30 +1,31 @@
 import type { NextFunction, Request, Response } from 'express';
 import { ValidationError } from '../../lib/errors';
-import type { ApiKeyAuthenticatedRequest } from '../../middleware/authenticate-api-key';
+import { requireApiKeyId, requireUser, sendSuccess } from '../../lib/http';
 import type { TranscriptionService } from './transcription.service';
 
 export class TranscriptionController {
   constructor(private readonly transcriptionService: TranscriptionService) {}
 
-  async transcribe(req: Request, res: Response, next: NextFunction) {
+  /**
+   * POST /transcribe — Transcreve um arquivo de áudio enviado via multipart/form-data.
+   * Requer autenticação por API key e subscription ativa.
+   * Sujeito a rate limiting por tier.
+   */
+  async transcribe(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const authReq = req as ApiKeyAuthenticatedRequest;
-
       if (!req.file) {
         throw new ValidationError(
           'No audio file provided. Use multipart/form-data with field "audio".',
         );
       }
 
-      const result = await this.transcriptionService.transcribe(
-        authReq.user,
-        req.file,
-        authReq.apiKeyId,
-      );
+      const user = requireUser(req);
+      const apiKeyId = requireApiKeyId(req);
 
-      return res.status(200).json({ data: result });
+      const result = await this.transcriptionService.transcribe(user, req.file, apiKeyId);
+      sendSuccess(res, result);
     } catch (error) {
-      return next(error);
+      next(error);
     }
   }
 }

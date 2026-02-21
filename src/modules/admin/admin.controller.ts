@@ -1,16 +1,18 @@
 import type { NextFunction, Request, Response } from 'express';
 import { z } from 'zod';
 import { ValidationError } from '../../lib/errors';
-import type { AuthenticatedRequest } from '../../middleware/authenticate';
+import { requireUser, sendPaginated, sendSuccess } from '../../lib/http';
+import {
+  paginationWithSearchSchema,
+  parseBody,
+  parseParams,
+  parseQuery,
+} from '../../lib/validation';
 import type { AdminService } from './admin.service';
 
-const PaginationSchema = z.object({
-  page: z.string().transform(Number).pipe(z.number().int().positive()).default('1'),
-  limit: z.string().transform(Number).pipe(z.number().int().min(1).max(100)).default('20'),
-  search: z.string().optional(),
-});
+const userIdParamSchema = z.object({ id: z.string().uuid('Invalid user ID') });
 
-const UpdateSubscriptionSchema = z.object({
+const updateSubscriptionSchema = z.object({
   tier: z.enum(['trial', 'basic', 'pro']).optional(),
   status: z.enum(['active', 'trial', 'suspended', 'cancelled']).optional(),
 });
@@ -18,98 +20,98 @@ const UpdateSubscriptionSchema = z.object({
 export class AdminController {
   constructor(private readonly service: AdminService) {}
 
-  async listUsers(req: Request, res: Response, next: NextFunction) {
+  /**
+   * GET /admin/users — Lista paginada de todos os usuários (com dados de assinatura).
+   * Query params: `page`, `limit`, `search` (opcional — filtra por nome ou email).
+   * Requer role `admin`.
+   */
+  async listUsers(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const { userId } = (req as AuthenticatedRequest).user;
-
-      const parsed = PaginationSchema.safeParse(req.query);
-      if (!parsed.success) {
-        return next(new ValidationError('Invalid pagination parameters'));
-      }
-
-      const { page, limit, search } = parsed.data;
+      const { userId } = requireUser(req);
+      const { page, limit, search } = parseQuery(paginationWithSearchSchema, req);
       const result = await this.service.listUsers(userId, { page, limit, search });
 
-      return res.json({
-        data: result.data,
-        pagination: {
-          page: result.page,
-          limit,
-          total: result.total,
-          totalPages: result.totalPages,
-        },
+      sendPaginated(res, result.data, {
+        page: result.page,
+        limit,
+        total: result.total,
+        totalPages: result.totalPages,
       });
     } catch (error) {
-      return next(error);
+      next(error);
     }
   }
 
-  async getUserDetails(req: Request, res: Response, next: NextFunction) {
+  /**
+   * GET /admin/users/:id — Detalhes completos de um usuário (subscription + transcrições recentes).
+   * Requer role `admin`.
+   */
+  async getUserDetails(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const { userId } = (req as AuthenticatedRequest).user;
-      const id = req.params.id as string;
-
+      const { userId } = requireUser(req);
+      const { id } = parseParams(userIdParamSchema, req);
       const details = await this.service.getUserDetails(userId, id);
-      return res.json({ data: details });
+      sendSuccess(res, details);
     } catch (error) {
-      return next(error);
+      next(error);
     }
   }
 
-  async updateSubscription(req: Request, res: Response, next: NextFunction) {
+  /**
+   * PATCH /admin/users/:id/subscription — Atualiza tier e/ou status da assinatura de um usuário.
+   * Ao menos um campo (`tier` ou `status`) deve ser informado.
+   * Requer role `admin`.
+   */
+  async updateSubscription(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const { userId } = (req as AuthenticatedRequest).user;
-      const id = req.params.id as string;
+      const { userId } = requireUser(req);
+      const { id } = parseParams(userIdParamSchema, req);
+      const data = parseBody(updateSubscriptionSchema, req);
 
-      const parsed = UpdateSubscriptionSchema.safeParse(req.body);
-      if (!parsed.success) {
-        return next(new ValidationError('Invalid subscription data'));
+      if (!data.tier && !data.status) {
+        throw new ValidationError('At least one field (tier or status) must be provided');
       }
 
-      if (!parsed.data.tier && !parsed.data.status) {
-        return next(new ValidationError('At least one field (tier or status) must be provided'));
-      }
-
-      const updated = await this.service.updateSubscription(userId, id, parsed.data);
-      return res.json({ data: updated });
+      const updated = await this.service.updateSubscription(userId, id, data);
+      sendSuccess(res, updated);
     } catch (error) {
-      return next(error);
+      next(error);
     }
   }
 
-  async getAuditLog(req: Request, res: Response, next: NextFunction) {
+  /**
+   * GET /admin/audit-log — Log de auditoria paginado (ações administrativas).
+   * Query params: `page`, `limit`.
+   * Requer role `admin`.
+   */
+  async getAuditLog(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const { userId } = (req as AuthenticatedRequest).user;
-
-      const parsed = PaginationSchema.safeParse(req.query);
-      if (!parsed.success) {
-        return next(new ValidationError('Invalid pagination parameters'));
-      }
-
-      const { page, limit } = parsed.data;
+      const { userId } = requireUser(req);
+      const { page, limit } = parseQuery(paginationWithSearchSchema, req);
       const result = await this.service.getAuditLog(userId, { page, limit });
 
-      return res.json({
-        data: result.data,
-        pagination: {
-          page: result.page,
-          limit,
-          total: result.total,
-          totalPages: result.totalPages,
-        },
+      sendPaginated(res, result.data, {
+        page: result.page,
+        limit,
+        total: result.total,
+        totalPages: result.totalPages,
       });
     } catch (error) {
-      return next(error);
+      next(error);
     }
   }
 
-  async getStats(req: Request, res: Response, next: NextFunction) {
+  /**
+   * GET /admin/stats — Estatísticas globais do sistema (totais de usuários, transcrições e planos).
+   * Requer role `admin`.
+   */
+  async getStats(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const { userId } = (req as AuthenticatedRequest).user;
+      const { userId } = requireUser(req);
       const stats = await this.service.getDashboardStats(userId);
-      return res.json({ data: stats });
+      sendSuccess(res, stats);
     } catch (error) {
-      return next(error);
+      next(error);
     }
   }
 }

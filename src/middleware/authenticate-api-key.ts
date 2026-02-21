@@ -4,32 +4,35 @@ import { UnauthorizedError } from '../lib/errors';
 import { ApiKeysRepository } from '../modules/api-keys/api-keys.repository';
 import { SubscriptionsRepository } from '../modules/subscriptions/subscriptions.repository';
 
-export interface ApiKeyAuthenticatedRequest extends Request {
-  user: {
-    userId: string;
-    role: string;
-  };
-  apiKeyId: string;
-  subscription: {
-    tier: 'trial' | 'basic' | 'pro';
-    status: string;
-  } | null;
-}
-
 const repo = new ApiKeysRepository();
 const subscriptionsRepo = new SubscriptionsRepository();
 
-export async function authenticateApiKey(req: Request, _res: Response, next: NextFunction) {
+/**
+ * Middleware de autenticação via API Key (Bearer token com prefixo `vxa_`).
+ *
+ * Valida a chave pesquisando o hash SHA-256 no banco de dados. Injeta `req.user`,
+ * `req.apiKeyId` e `req.subscription` na requisição para uso em middlewares e
+ * controllers subsequentes.
+ *
+ * @throws {UnauthorizedError} Se o header estiver ausente, malformado, ou a key for inválida/revogada
+ */
+export async function authenticateApiKey(
+  req: Request,
+  _res: Response,
+  next: NextFunction,
+): Promise<void> {
   const authHeader = req.headers.authorization;
 
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return next(new UnauthorizedError('Missing or invalid authorization header'));
+  if (!authHeader?.startsWith('Bearer ')) {
+    next(new UnauthorizedError('Missing or invalid authorization header'));
+    return;
   }
 
   const token = authHeader.slice(7);
 
   if (!token.startsWith('vxa_')) {
-    return next(new UnauthorizedError('Invalid API key format'));
+    next(new UnauthorizedError('Invalid API key format'));
+    return;
   }
 
   const keyHash = crypto.createHash('sha256').update(token).digest('hex');
@@ -38,28 +41,28 @@ export async function authenticateApiKey(req: Request, _res: Response, next: Nex
     const apiKey = await repo.findByHash(keyHash);
 
     if (!apiKey) {
-      return next(new UnauthorizedError('Invalid or revoked API key'));
+      next(new UnauthorizedError('Invalid or revoked API key'));
+      return;
     }
 
     // Inject user and apiKeyId into request
-    const authenticatedReq = req as ApiKeyAuthenticatedRequest;
-    authenticatedReq.user = {
+    req.user = {
       userId: apiKey.userId,
       role: 'customer',
     };
-    authenticatedReq.apiKeyId = apiKey.id;
+    req.apiKeyId = apiKey.id;
 
     // Fetch and inject subscription for rate limiting
     const subscription = await subscriptionsRepo.findByUserId(apiKey.userId);
-    authenticatedReq.subscription = subscription
+    req.subscription = subscription
       ? { tier: subscription.tier, status: subscription.status }
       : null;
 
-    // Update last used (async, don't await)
+    // Update last used timestamp asynchronously — fire and forget
     repo.updateLastUsed(apiKey.id).catch(() => {});
 
-    return next();
+    next();
   } catch (error) {
-    return next(error);
+    next(error);
   }
 }
