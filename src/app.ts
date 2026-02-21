@@ -22,7 +22,28 @@ export function createApp() {
   const app = express();
 
   // ─── Security headers (helmet removes X-Powered-By, adds CSP, HSTS, etc.) ──
-  app.use(helmet());
+  app.use(
+    helmet({
+      // Disable HSTS — this server has no SSL certificate yet.
+      // HSTS forces the browser to use HTTPS for all subsequent requests,
+      // causing ERR_SSL_PROTOCOL_ERROR on plain HTTP servers.
+      hsts: false,
+      // Configure CSP to allow Swagger UI (inline scripts + styles needed).
+      contentSecurityPolicy: {
+        directives: {
+          defaultSrc: ["'self'"],
+          scriptSrc: ["'self'", "'unsafe-inline'"],
+          styleSrc: ["'self'", "'unsafe-inline'"],
+          imgSrc: ["'self'", 'data:', 'https:'],
+          connectSrc: ["'self'"],
+          fontSrc: ["'self'"],
+          objectSrc: ["'none'"],
+          mediaSrc: ["'self'"],
+          frameSrc: ["'none'"],
+        },
+      },
+    }),
+  );
 
   // ─── Cookie parser — required to read HttpOnly refresh token cookie ────────
   app.use(cookieParser());
