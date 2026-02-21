@@ -2,119 +2,86 @@
 
 ## Visão do Produto
 
-Voxa API é uma plataforma SaaS de transcrição de áudio por assinatura, construída sobre o modelo Whisper (faster-whisper em CPU). Desenvolvedores e empresas pagam uma mensalidade fixa, recebem uma API Key e consomem um endpoint REST simples para transcrever áudios de até 5 minutos — sem gerenciar infraestrutura, sem se preocupar com modelos de ML, sem cobrança variável por minuto que explode o orçamento.
+Voxa é uma API REST paga de transcrição de áudio que permite desenvolvedores e empresas converter arquivos de áudio em texto de forma rápida, segura e acessível. Usando o modelo Whisper (faster-whisper) rodando em CPU, a Voxa oferece transcrições de alta qualidade sem depender de serviços externos caros.
 
-A proposta de valor é clareza e previsibilidade: um preço mensal fixo, limites transparentes por plano, e uma API que funciona em 3 linhas de código. Para o operador do produto, o controle total via painel admin (suspender por inadimplência, trocar plano, auditar uso) garante operação sustentável sem acesso direto ao banco de dados.
+O modelo de negócio é simples: o cliente assina um plano mensal, recebe um API Token e começa a usar imediatamente. Sem complexidade, sem setup demorado. A plataforma é self-service: registro → escolha do plano → pagamento → API Token disponível imediatamente.
 
 ## Público-alvo
 
-**Segmento primário — Desenvolvedores independentes e pequenas equipes:**
-- Constroem produtos que precisam de transcrição como feature (ex: notas de voz, legendas automáticas, resumo de reuniões, acessibilidade)
-- Não querem gerenciar infraestrutura de ML nem pagar por GPU
-- Valorizam documentação clara, quickstart rápido e preço previsível
-
-**Segmento secundário — Empresas de médio porte com volume moderado:**
-- Têm casos de uso internos (transcrição de calls de suporte, reuniões, entrevistas)
-- Precisam de auditoria, múltiplas API Keys por ambiente (dev/staging/prod) e suporte responsivo
-- Sensíveis a SLA e disponibilidade
-
-**Personas:**
-- **Dev Indie**: usa plano starter, integra em projetos pessoais, foco em simplicidade e custo baixo
-- **Tech Lead de Startup**: usa plano pro, precisa de múltiplas keys e histórico de uso para controle de custos
-- **Ops de Empresa**: usa plano business, precisa de auditoria, previsibilidade e canal de suporte
+- **Desenvolvedores independentes** que precisam de transcrição em seus produtos (podcasts, notas de voz, atendimento ao cliente) e querem integrar com poucas linhas de código
+- **Startups e pequenas empresas** que querem integrar transcrição sem pagar os preços da OpenAI ou AWS Transcribe e sem a complexidade de infraestrutura cloud
+- **Criadores de conteúdo** que precisam legendar ou transcrever vídeos/áudios de forma automatizada e recorrente
+- **Empresas de atendimento** que querem transcrever ligações ou mensagens de voz para análise, CRM ou compliance
 
 ## Problema que Resolve
 
-**O que é doloroso hoje:**
-1. **Custos variáveis imprevisíveis**: APIs de transcrição como AssemblyAI e Deepgram cobram por minuto/hora de áudio, gerando faturas surpresa em fim de mês — especialmente em produtos com uso sazonal
-2. **Complexidade de self-hosting**: rodar Whisper localmente exige GPU ou CPU potente, conhecimento de Python/CUDA, manutenção constante de ambiente e modelos
-3. **Curva de aprendizado**: plataformas enterprise (Google Speech, Amazon Transcribe) têm APIs complexas, billing obscuro e setup de IAM que leva horas para funcionar
-4. **Falta de controle operacional**: produtos sem painel admin dependem de queries diretas no banco para gerenciar inadimplência, revogar acesso ou auditar uso
+Soluções de transcrição existentes têm problemas sérios para uso moderado e previsível:
 
-**Como o Voxa API resolve:**
-- Plano mensal fixo → orçamento previsível, zero surpresa
-- Infra gerenciada → cliente só faz `curl` com a key, nós rodamos o Whisper
-- API simples → primeira transcrição em menos de 5 minutos após o cadastro
-- Painel admin completo → operador controla tudo sem SQL
+- **OpenAI Whisper API**: $0.006/minuto — para 1.000 minutos/mês são $6, mas o custo é imprevisível e escala com uso
+- **AWS Transcribe**: cobrança por segundo, requer conta AWS configurada, IAM roles, S3 buckets — muita infraestrutura para um uso simples
+- **Google Speech-to-Text**: preço variável por idioma, setup complexo com GCP
+- **AssemblyAI / Deepgram**: bons produtos, mas preços por uso que podem escalar inesperadamente
+
+A Voxa resolve isso com **preço fixo mensal por tier**, REST API simples (um endpoint, um token, pronto), e onboarding em minutos — sem conta cloud, sem configuração de infraestrutura, sem surpresas na fatura.
 
 ## Features Principais
 
-### Para o Cliente (customer)
-- **Endpoint de transcrição** (`POST /v1/transcribe`): upload de áudio (mp3, wav, ogg, mp4, m4a, flac, webm), retorna texto + metadados (duração, tempo de processamento)
-- **Gerenciamento de API Keys**: criar, rotular, listar e revogar chaves; chave exibida apenas no momento da criação
-- **Dashboard de uso**: consumo do dia e do mês, gráfico dos últimos 30 dias, percentual do limite atingido
-- **Histórico de transcrições**: listagem paginada com filtros por status e data; texto completo disponível no detalhe
-- **Plano e assinatura**: visualizar plano atual, limites, data de renovação e status
-- **Trial gratuito**: 10 transcrições no plano starter ao se cadastrar, sem precisar de cartão
-
-### Para o Operador (admin)
-- **Painel de clientes**: listagem com search, filtro por status e plano, métricas da plataforma
-- **Controle de assinaturas**: suspender (por inadimplência), reativar, trocar plano — com efeito imediato
-- **Gestão de API Keys**: revogar qualquer chave de qualquer cliente
-- **Audit log**: registro de todas as ações administrativas com ator, alvo e timestamp
-
-### Segurança e Confiabilidade
-- Rate limiting por tier com headers `X-RateLimit-*` padronizados
-- Page guard: sem assinatura ativa → 402 em dashboard e endpoint de transcrição
-- Proteção contra brute-force no login (5 tentativas por IP por 15 minutos)
-- Input sanitization, helmet (headers de segurança), CORS com whitelist
-- Logs estruturados com correlation ID por requisição (rastreabilidade)
-- Health checks públicos (liveness + readiness)
-
-### Documentação e Discovery
-- Swagger/OpenAPI interativo em `/docs` com autenticação integrada
-- Landing page com pricing, features e quickstart em 3 linhas de código
+- **POST /v1/transcribe** — endpoint core para transcrição de áudios de até 5 minutos; aceita multipart/form-data com o arquivo de áudio; retorna JSON com texto, idioma detectado e confiança
+- **API Keys gerenciadas** — geração segura com prefixo `vxa_`, rotulagem por ambiente (produção/dev), listagem, revogação individual sem afetar outras keys
+- **Assinaturas com page guard** — sem assinatura ativa = sem acesso ao dashboard e à API; trial de 7 dias disponível no registro
+- **Rate limiting por tier** — limites diferentes por plano (ex: basic = 60 req/min, pro = 300 req/min), com headers `X-RateLimit-Limit`, `X-RateLimit-Remaining` e `X-RateLimit-Reset` padronizados
+- **Dashboard do cliente** — visualização de uso mensal, histórico de transcrições com replay, gestão de perfil e API keys
+- **Dashboard admin** — controle total de clientes, ativação/desativação de assinaturas, audit log de ações críticas, métricas de uso da plataforma
+- **Autenticação robusta** — JWT com roles (`customer` / `admin`), refresh tokens, proteção contra brute-force via rate limit no login (5 tentativas / 15 min)
+- **Swagger completo** — documentação interativa da API em `/api/docs`, com exemplos de request/response e autenticação integrada
+- **Landing page** — apresentação do produto, planos e preços, CTA para registro, e captação de novos clientes
+- **Logs estruturados com pino** — rastreabilidade total de cada requisição com `requestId`, duração, status e metadados de transcrição
+- **Docker + graceful shutdown** — containerização completa, health checks em `/health`, shutdown limpo sem perder transcrições em andamento
 
 ## Non-Goals (Fora do Escopo)
 
-O que o Voxa API **NÃO** fará nesta versão:
-
-- ❌ **Transcrição em tempo real (streaming)**: foco exclusivo em áudio pré-gravado (batch); streaming requer WebSockets e infraestrutura diferente
-- ❌ **Múltiplos idiomas com detecção automática**: idioma fixo configurado no servidor; detecção de idioma é feature de roadmap
-- ❌ **Diarização (identificação de múltiplos falantes)**: fora do escopo do faster-whisper base; requer modelos adicionais
-- ❌ **Análise semântica** (sumarização, sentiment, tópicos, PII redaction): o produto é transcrição, não inteligência sobre o texto
-- ❌ **Integração de pagamento automatizada**: billing manual/manual nesta versão (admin ativa planos); integração com Stripe é roadmap
-- ❌ **Upload de áudio > 5 minutos**: limite técnico do produto — arquivos maiores devem ser divididos pelo cliente
-- ❌ **SDK em múltiplas linguagens**: API REST + documentação clara são suficientes para v1; SDKs são roadmap
-- ❌ **SLA formal / Status Page pública**: monitoramento interno apenas; SLA e status page são roadmap enterprise
-- ❌ **Exportação de transcrições** (PDF, SRT, VTT): retorno em JSON apenas; conversão de formato é responsabilidade do cliente
+- Transcrição de áudios acima de 5 minutos (na v1) — limitar complexidade e custo de CPU
+- Tradução de transcrições (apenas transcrição no idioma original do áudio)
+- App mobile nativo — a API REST é suficiente para integração mobile
+- Suporte a streaming de áudio em tempo real — requer arquitetura WebSocket/gRPC fora do escopo v1
+- Integrações diretas com plataformas (Slack, WhatsApp, Zoom, etc.) — isso é responsabilidade do cliente da API
+- Processamento de vídeo — apenas áudio; extração de áudio de vídeo é responsabilidade do cliente
+- Múltiplos idiomas de interface no dashboard — apenas português e inglês na v1
+- Faturamento automático / cobrança recorrente integrada na plataforma — gestão manual de assinaturas pelo admin na v1
 
 ## Concorrentes e Diferencial
 
-### Concorrentes diretos pesquisados
-
-| Produto | Modelo de preço | Diferencial deles | Ponto fraco |
+| Concorrente | Modelo de preço | Limitação | Diferencial da Voxa |
 |---|---|---|---|
-| **OpenAI Whisper API** | Pay-per-use ($0.006/min) | Marca forte, precisão alta | Custo variável, dependência de OpenAI |
-| **AssemblyAI** | Pay-per-use + features premium | Diarização, sentiment, LeMUR | Caro em volume, features extras custam mais |
-| **Deepgram** | Pay-per-use com créditos grátis | Baixa latência, streaming | Limite de streams concorrentes por tier |
-| **Gladia** | Pay-per-use | Precisão em idiomas europeus | Menos conhecido, docs incompletas |
-| **Voicegain** | Enterprise, SOC-2 | Compliance, private cloud | Caro, focado em enterprise |
-| **Google Speech-to-Text** | Pay-per-use com free tier | Integração com GCP | Setup IAM complexo, billing obscuro |
+| OpenAI Whisper API | $0.006/min (por uso) | Custo imprevisível | Preço fixo mensal, sem surpresas |
+| AWS Transcribe | Por segundo (por uso) | Setup AWS complexo | Mais simples, sem AWS setup |
+| AssemblyAI | Por hora de áudio | Escala com uso | Mais barato para uso moderado |
+| Deepgram | Por hora + features | Planos caros no tier médio | Focado em simplicidade e preço |
+| Google Speech-to-Text | Por 15s de áudio | Setup GCP necessário | Zero infraestrutura para o cliente |
 
-### Diferencial do Voxa API
+**Diferencial principal:** preço previsível com plano fixo mensal, API com um único endpoint intuitivo, onboarding em minutos (registro → pagamento → token → uso), e controle total pelo admin (desativar clientes inadimplentes, audit log, métricas em tempo real).
 
-1. **Preço fixo e previsível**: plano mensal vs pay-per-use — ideal para produtos com volume consistente ou orçamento fixo
-2. **Simplicidade operacional**: API em 3 linhas, sem IAM, sem SDKs obrigatórios, sem configuração de modelos
-3. **Controle total para o operador**: painel admin nativo com controle de inadimplência sem acesso direto ao banco
-4. **Self-hosted por natureza**: rodamos faster-whisper em CPU própria — sem custo por token enviado a terceiros, sem dependência de APIs externas para a funcionalidade core
-5. **Velocidade de integração**: trial sem cartão, API Key na hora, primeira transcrição em < 5 minutos
+## Modelo de Assinatura
+
+| Tier | Limite | Rate Limit | Trial |
+|---|---|---|---|
+| **trial** | 7 dias | 20 req/min | Sim (automático no cadastro) |
+| **basic** | Plano mensal básico | 60 req/min | Não |
+| **pro** | Plano mensal profissional | 300 req/min | Não |
+
+- Sem assinatura ativa → acesso bloqueado por page guard (dashboard) e 401 (API)
+- Trial expira automaticamente; cliente precisa assinar um plano para continuar
+- Admin pode ativar, pausar ou cancelar qualquer assinatura manualmente
 
 ## Glossário do Domínio
 
-| Termo | Definição |
-|---|---|
-| **Transcrição** | Conversão de áudio em texto. No contexto da API, o resultado é o texto bruto sem formatação adicional. |
-| **Whisper** | Modelo de speech-to-text desenvolvido pela OpenAI, open-source. O Voxa API usa `faster-whisper`, uma implementação otimizada para CPU. |
-| **faster-whisper** | Re-implementação do Whisper usando CTranslate2, com melhor performance em CPU sem necessidade de GPU. |
-| **API Key** | Token de autenticação gerado pela plataforma e usado pelo cliente para autenticar requisições ao endpoint de transcrição. Formato: `vxa_` + 40 chars hex. |
-| **Bearer Token** | Token JWT usado para autenticação nas rotas do dashboard (não é a API Key — são dois mecanismos distintos). |
-| **Subscription / Assinatura** | Vínculo entre um cliente e um plano, com período de vigência e status (trial, active, suspended, cancelled). |
-| **Trial** | Período gratuito inicial com 10 transcrições no plano starter. Não requer cartão de crédito. |
-| **Rate Limit** | Limite de requisições por período (diário) determinado pelo plano do cliente. |
-| **Page Guard** | Mecanismo que bloqueia acesso a endpoints de dashboard e transcrição para usuários sem assinatura ativa, retornando HTTP 402. |
-| **Audit Log** | Registro imutável de ações administrativas (suspend, reactivate, plan change, key revocation) para rastreabilidade. |
-| **Tier** | Nível de plano do cliente (starter, pro, business), que determina limites de uso e funcionalidades. |
-| **X-API-Key** | Header HTTP usado para autenticar requisições ao endpoint de transcrição (`POST /v1/transcribe`). |
-| **Processing Time** | Tempo em milissegundos desde o recebimento do áudio até a resposta com o texto transcrito. Métrica de performance do servidor. |
-| **Brute-force Protection** | Mecanismo que bloqueia IPs após múltiplas tentativas de login falhadas, protegendo contra ataques de dicionário. |
+- **API Token / API Key** — chave de autenticação gerada por assinante para consumir a API; formato `vxa_<random_hex>`; associada a um usuário e a um tier de assinatura
+- **Tier** — nível do plano de assinatura (`trial`, `basic`, `pro`) que define rate limits, duração máxima de áudio e features disponíveis
+- **Transcrição** — conversão de arquivo de áudio em texto pelo modelo Whisper; resultado inclui texto, idioma detectado, confiança e duração do áudio
+- **Page Guard** — middleware de proteção de rota que verifica assinatura ativa antes de permitir acesso ao dashboard; redireciona para página de planos se inativo
+- **Circuit Breaker** — mecanismo de proteção que suspende acesso de um cliente após comportamento anômalo (ex: flood de requests acima do limite)
+- **Rate Limit** — limite de requisições por período de tempo, definido por tier; controlado por sliding window no Redis ou em memória
+- **Audit Log** — registro imutável de ações críticas realizadas por admins (ex: desativar assinatura, alterar plano) e clientes (ex: revogar API key); armazenado no banco com timestamp e IP
+- **faster-whisper** — implementação otimizada do modelo Whisper em Python usando CTranslate2; roda eficientemente em CPU com qualidade equivalente ao modelo original da OpenAI
+- **Graceful Shutdown** — processo de encerramento do servidor que aguarda requisições em andamento terminarem antes de fechar conexões, evitando transcrições incompletas
+- **Refresh Token** — token de longa duração usado para renovar o JWT de acesso sem exigir novo login; armazenado com hash no banco e associado ao usuário
