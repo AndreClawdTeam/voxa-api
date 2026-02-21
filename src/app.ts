@@ -2,6 +2,7 @@ import express from 'express';
 import { AppError } from './lib/errors';
 import { apiKeysRouter } from './modules/api-keys/api-keys.routes';
 import { authRouter } from './modules/auth/auth.routes';
+import { dashboardRouter } from './modules/dashboard/dashboard.routes';
 import { subscriptionsRouter } from './modules/subscriptions/subscriptions.routes';
 import { transcriptionRouter } from './modules/transcription/transcription.routes';
 
@@ -21,6 +22,7 @@ export function createApp() {
   app.use('/api/v1/transcribe', transcriptionRouter);
   app.use('/api/v1/keys', apiKeysRouter);
   app.use('/api/v1/subscriptions', subscriptionsRouter);
+  app.use('/api/v1/dashboard', dashboardRouter);
 
   // Error handler global
   app.use(
