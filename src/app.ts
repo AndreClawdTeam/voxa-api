@@ -45,7 +45,11 @@ export function createApp() {
       // ─────────────────────────────────────────────────────────────────────
       hsts: false,
       // Configure CSP to allow Swagger UI (inline scripts + styles needed).
+      // useDefaults: false — prevent helmet from automatically adding
+      // `upgrade-insecure-requests`, which would force the browser to upgrade
+      // all HTTP subresource requests to HTTPS (breaks everything without SSL).
       contentSecurityPolicy: {
+        useDefaults: false,
         directives: {
           defaultSrc: ["'self'"],
           scriptSrc: ["'self'", "'unsafe-inline'"],
