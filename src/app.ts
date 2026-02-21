@@ -24,9 +24,25 @@ export function createApp() {
   // ─── Security headers (helmet removes X-Powered-By, adds CSP, HSTS, etc.) ──
   app.use(
     helmet({
-      // Disable HSTS — this server has no SSL certificate yet.
-      // HSTS forces the browser to use HTTPS for all subsequent requests,
-      // causing ERR_SSL_PROTOCOL_ERROR on plain HTTP servers.
+      // ─── HSTS (HTTP Strict Transport Security) ──────────────────────────
+      // DESATIVADO: este servidor ainda não tem um domínio nem certificado SSL.
+      //
+      // O que é HSTS: instrui o browser a usar HTTPS para TODOS os requests
+      // subsequentes ao domínio, pelo tempo definido em maxAge. Uma vez que o
+      // browser recebe esse header, ele nunca mais aceita HTTP — o que é ótimo
+      // em produção, mas causa ERR_SSL_PROTOCOL_ERROR em servidores sem SSL
+      // (como este ambiente de staging rodando em IP puro sem certificado).
+      //
+      // ⚠️  Para reativar quando tiver domínio + certificado SSL:
+      //   1. Registrar um domínio (ex: voxa.dev)
+      //   2. Apontar o DNS para este servidor
+      //   3. Instalar certificado: sudo certbot --nginx -d voxa.dev -d api.voxa.dev
+      //   4. Remover `hsts: false` abaixo (ou substituir por `hsts: { maxAge: 31536000 }`)
+      //
+      // Por que HSTS importa em produção: previne ataques de downgrade
+      // (HTTPS → HTTP) e ataques MITM. Sem ele, um atacante na rede pode
+      // interceptar o redirect HTTP→HTTPS e servir conteúdo não criptografado.
+      // ─────────────────────────────────────────────────────────────────────
       hsts: false,
       // Configure CSP to allow Swagger UI (inline scripts + styles needed).
       contentSecurityPolicy: {
