@@ -2,6 +2,7 @@ import * as crypto from 'node:crypto';
 import type { NextFunction, Request, Response } from 'express';
 import { UnauthorizedError } from '../lib/errors';
 import { ApiKeysRepository } from '../modules/api-keys/api-keys.repository';
+import { SubscriptionsRepository } from '../modules/subscriptions/subscriptions.repository';
 
 export interface ApiKeyAuthenticatedRequest extends Request {
   user: {
@@ -9,9 +10,14 @@ export interface ApiKeyAuthenticatedRequest extends Request {
     role: string;
   };
   apiKeyId: string;
+  subscription: {
+    tier: 'trial' | 'basic' | 'pro';
+    status: string;
+  } | null;
 }
 
 const repo = new ApiKeysRepository();
+const subscriptionsRepo = new SubscriptionsRepository();
 
 export async function authenticateApiKey(req: Request, _res: Response, next: NextFunction) {
   const authHeader = req.headers.authorization;
@@ -42,6 +48,12 @@ export async function authenticateApiKey(req: Request, _res: Response, next: Nex
       role: 'customer',
     };
     authenticatedReq.apiKeyId = apiKey.id;
+
+    // Fetch and inject subscription for rate limiting
+    const subscription = await subscriptionsRepo.findByUserId(apiKey.userId);
+    authenticatedReq.subscription = subscription
+      ? { tier: subscription.tier, status: subscription.status }
+      : null;
 
     // Update last used (async, don't await)
     repo.updateLastUsed(apiKey.id).catch(() => {});
