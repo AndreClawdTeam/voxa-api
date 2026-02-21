@@ -17,6 +17,9 @@ vi.mock('../../lib/jwt', () => ({
   signAccessToken: vi.fn().mockReturnValue('mock-access-token'),
   signRefreshToken: vi.fn().mockReturnValue('mock-refresh-token'),
   verifyToken: vi.fn(),
+  verifyRefreshToken: vi.fn(),
+  revokeRefreshToken: vi.fn(),
+  isRefreshTokenRevoked: vi.fn().mockReturnValue(false),
 }));
 
 vi.mock('bcryptjs', () => ({
@@ -171,22 +174,56 @@ describe('AuthService', () => {
   describe('refreshToken()', () => {
     it('should return new access token for valid refresh token', async () => {
       const jwt = await import('../../lib/jwt');
-      vi.mocked(jwt.verifyToken).mockReturnValue({ userId: mockUser.id } as never);
+      vi.mocked(jwt.verifyRefreshToken).mockReturnValue({
+        userId: mockUser.id,
+        jti: 'test-jti',
+      } as never);
       vi.mocked(repoMock.findById).mockResolvedValue(mockUser);
 
       const result = await service.refreshToken('valid-refresh-token');
 
-      expect(jwt.verifyToken).toHaveBeenCalledWith('valid-refresh-token');
+      expect(jwt.verifyRefreshToken).toHaveBeenCalledWith('valid-refresh-token');
       expect(result).toMatchObject({ accessToken: 'mock-access-token' });
     });
 
     it('should throw UnauthorizedError for invalid/expired token', async () => {
       const jwt = await import('../../lib/jwt');
-      vi.mocked(jwt.verifyToken).mockImplementation(() => {
+      vi.mocked(jwt.verifyRefreshToken).mockImplementation(() => {
         throw new UnauthorizedError('Invalid or expired token');
       });
 
       await expect(service.refreshToken('invalid-token')).rejects.toThrow(UnauthorizedError);
+    });
+
+    it('should throw UnauthorizedError for a revoked refresh token', async () => {
+      const jwt = await import('../../lib/jwt');
+      vi.mocked(jwt.verifyRefreshToken).mockImplementation(() => {
+        throw new UnauthorizedError('Refresh token has been revoked');
+      });
+
+      await expect(service.refreshToken('revoked-token')).rejects.toThrow(UnauthorizedError);
+      await expect(service.refreshToken('revoked-token')).rejects.toThrow('revoked');
+    });
+  });
+
+  describe('logout()', () => {
+    it('should revoke the refresh token jti on logout', async () => {
+      const jwt = await import('../../lib/jwt');
+      vi.mocked(jwt.verifyRefreshToken).mockReturnValue({
+        userId: mockUser.id,
+        jti: 'logout-jti',
+        exp: Math.floor(Date.now() / 1000) + 3600,
+      } as never);
+
+      const result = await service.logout(mockUser.id, 'some-refresh-token');
+
+      expect(jwt.revokeRefreshToken).toHaveBeenCalledWith('logout-jti', expect.any(Number));
+      expect(result).toEqual({ success: true });
+    });
+
+    it('should succeed even if no refresh token is provided', async () => {
+      const result = await service.logout(mockUser.id);
+      expect(result).toEqual({ success: true });
     });
   });
 });

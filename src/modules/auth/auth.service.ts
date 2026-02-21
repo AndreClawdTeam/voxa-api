@@ -1,7 +1,12 @@
 import bcrypt from 'bcryptjs';
 import { env } from '../../config/env';
 import { ConflictError, UnauthorizedError } from '../../lib/errors';
-import { signAccessToken, signRefreshToken, verifyToken } from '../../lib/jwt';
+import {
+  revokeRefreshToken,
+  signAccessToken,
+  signRefreshToken,
+  verifyRefreshToken,
+} from '../../lib/jwt';
 import type { AuthRepository } from './auth.repository';
 import type { LoginDto, RegisterDto } from './auth.schema';
 
@@ -69,7 +74,8 @@ export class AuthService {
   }
 
   async refreshToken(token: string) {
-    const payload = verifyToken(token);
+    // verifyRefreshToken validates iss/aud, expiry, AND checks the jti blacklist
+    const payload = verifyRefreshToken(token);
     const userId = payload.userId as string;
 
     const user = await this.authRepo.findById(userId);
@@ -81,9 +87,19 @@ export class AuthService {
     return { accessToken };
   }
 
-  async logout(_userId: string) {
-    // With stateless JWT, logout is handled client-side by discarding the token.
-    // In a full implementation, we'd maintain a token blacklist or use refresh token rotation.
+  async logout(_userId: string, refreshToken?: string) {
+    // Blacklist the refresh token's jti so it cannot be reused after logout.
+    // Access tokens are short-lived (15m) and remain valid until they expire —
+    // clients must discard them on logout.
+    if (refreshToken) {
+      try {
+        const payload = verifyRefreshToken(refreshToken);
+        const exp = payload.exp ? payload.exp * 1000 : Date.now() + 7 * 24 * 60 * 60 * 1000;
+        revokeRefreshToken(payload.jti, exp);
+      } catch {
+        // If the token is already invalid/expired, nothing to revoke
+      }
+    }
     return { success: true };
   }
 }

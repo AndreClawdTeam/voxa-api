@@ -51,7 +51,10 @@ export class AuthController {
   async logout(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = (req as Request & { user?: { userId: string } }).user?.userId ?? '';
-      await this.authService.logout(userId);
+      // Extract refreshToken from body (optional — used to blacklist jti on server-side)
+      const refreshToken =
+        typeof req.body?.refreshToken === 'string' ? req.body.refreshToken : undefined;
+      await this.authService.logout(userId, refreshToken);
       return res.status(204).send();
     } catch (error) {
       return next(error);
