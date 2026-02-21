@@ -4,7 +4,7 @@ import { AuthController } from './auth.controller';
 import { AuthRepository } from './auth.repository';
 import { AuthService } from './auth.service';
 
-// Brute-force protection: max 5 requests per 15 minutes per IP
+// Brute-force protection on login: max 5 requests per 15 minutes per IP
 const bruteForceLimit = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 5,
@@ -14,7 +14,20 @@ const bruteForceLimit = rateLimit({
     code: 'RATE_LIMIT_EXCEEDED',
     message: 'Too many login attempts. Please try again in 15 minutes.',
   },
-  skip: (req) => req.path === '/register' || req.path === '/refresh' || req.path === '/logout',
+});
+
+// Account creation abuse protection: max 5 registrations per 15 minutes per IP.
+// Without this limit, anyone can script thousands of account creations, exhausting
+// DB capacity and trial subscription slots.
+const registerLimit = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    code: 'RATE_LIMIT_EXCEEDED',
+    message: 'Too many registration attempts. Please try again later.',
+  },
 });
 
 const repo = new AuthRepository();
@@ -79,7 +92,7 @@ export const authRouter = Router();
  *       409:
  *         description: Email already registered
  */
-authRouter.post('/register', controller.register.bind(controller));
+authRouter.post('/register', registerLimit, controller.register.bind(controller));
 
 /**
  * @swagger
