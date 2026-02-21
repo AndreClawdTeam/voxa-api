@@ -1,6 +1,9 @@
 import express from 'express';
 import { AppError } from './lib/errors';
+import { apiKeysRouter } from './modules/api-keys/api-keys.routes';
 import { authRouter } from './modules/auth/auth.routes';
+import { subscriptionsRouter } from './modules/subscriptions/subscriptions.routes';
+import { transcriptionRouter } from './modules/transcription/transcription.routes';
 
 export function createApp() {
   const app = express();
@@ -15,6 +18,9 @@ export function createApp() {
 
   // API routes
   app.use('/api/v1/auth', authRouter);
+  app.use('/api/v1/transcribe', transcriptionRouter);
+  app.use('/api/v1/keys', apiKeysRouter);
+  app.use('/api/v1/subscriptions', subscriptionsRouter);
 
   // Error handler global
   app.use(
