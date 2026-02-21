@@ -14,6 +14,15 @@ const envSchema = z.object({
   TRIAL_DURATION_DAYS: z.string().transform(Number).default('7'),
   LOG_LEVEL: z.enum(['trace', 'debug', 'info', 'warn', 'error']).default('info'),
   WHISPER_PYTHON: z.string().default('python3'),
+  ALLOWED_ORIGINS: z
+    .string()
+    .default('')
+    .transform((s) =>
+      s
+        .split(',')
+        .map((o) => o.trim())
+        .filter(Boolean),
+    ),
 });
 
 const parsed = envSchema.safeParse(process.env);
