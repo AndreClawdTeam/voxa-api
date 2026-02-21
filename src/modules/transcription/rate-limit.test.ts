@@ -14,10 +14,12 @@ vi.mock('../../config/env', () => ({
 function buildApp(tier: 'trial' | 'basic' | 'pro', userId = 'test-user', maxOverride?: number) {
   const app = express();
 
-  // Simulate authenticate-api-key middleware injecting user + subscription
+  // Simulate authenticate-api-key middleware injecting user + subscription.
+  // With the global Express namespace (src/types/express.d.ts), req.user and
+  // req.subscription are directly assignable — no cast needed.
   app.use((req, _res, next) => {
-    (req as any).user = { userId };
-    (req as any).subscription = { tier };
+    req.user = { userId, role: 'customer' };
+    req.subscription = { tier, status: 'active' };
     next();
   });
 
@@ -82,7 +84,7 @@ describe('createTierRateLimit middleware', () => {
     it('should default to trial limit (20) when subscription is missing', async () => {
       const app = express();
       app.use((req, _res, next) => {
-        (req as any).user = { userId: 'no-sub-user' };
+        req.user = { userId: 'no-sub-user', role: 'customer' };
         // No subscription injected — should fall back to trial
         next();
       });
@@ -113,8 +115,8 @@ describe('createTierRateLimit middleware', () => {
       const buildUserApp = (userId: string) => {
         const app = express();
         app.use((req, _res, next) => {
-          (req as any).user = { userId };
-          (req as any).subscription = { tier: 'trial' };
+          req.user = { userId, role: 'customer' };
+          req.subscription = { tier: 'trial', status: 'active' };
           next();
         });
         app.use(createTierRateLimit({ maxOverride: 1 }));

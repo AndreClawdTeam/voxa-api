@@ -1,6 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { User } from '../../db/schema';
 import { ForbiddenError } from '../../lib/errors';
-import type { AdminRepository } from './admin.repository';
+import type {
+  AdminRepository,
+  AuditLog,
+  UserDetails,
+  UserWithSubscription,
+} from './admin.repository';
 import { AdminService } from './admin.service';
 
 // Mock DB to avoid real connections
@@ -12,6 +18,11 @@ vi.mock('../../db/schema', () => ({
   auditLogs: {},
 }));
 
+/** Helper: creates a minimal partial User mock. Tests only care about id/role. */
+function mockUser(id: string, role: 'admin' | 'customer'): User {
+  return { id, role } as unknown as User;
+}
+
 describe('AdminService', () => {
   let service: AdminService;
   let repoMock: AdminRepository;
@@ -19,55 +30,72 @@ describe('AdminService', () => {
   const adminUser = { userId: 'admin-uuid', role: 'admin' };
   const customerUser = { userId: 'customer-uuid', role: 'customer' };
 
-  const mockUsers = [
+  const mockUsers: UserWithSubscription[] = [
     {
       id: 'user-1',
       name: 'Alice',
       email: 'alice@example.com',
-      role: 'customer' as const,
+      role: 'customer',
       isActive: true,
       createdAt: new Date('2026-01-01'),
       updatedAt: new Date('2026-01-01'),
-      subscription: { tier: 'basic', status: 'active' },
+      subscription: { id: 'sub-1', tier: 'basic', status: 'active', trialEndsAt: null },
     },
     {
       id: 'user-2',
       name: 'Bob',
       email: 'bob@example.com',
-      role: 'customer' as const,
+      role: 'customer',
       isActive: true,
       createdAt: new Date('2026-01-02'),
       updatedAt: new Date('2026-01-02'),
-      subscription: { tier: 'trial', status: 'trial' },
+      subscription: { id: 'sub-2', tier: 'trial', status: 'trial', trialEndsAt: null },
     },
   ];
 
-  const mockUserDetails = {
+  const mockUserDetails: UserDetails = {
     id: 'user-1',
     name: 'Alice',
     email: 'alice@example.com',
-    role: 'customer' as const,
+    role: 'customer',
     isActive: true,
     createdAt: new Date('2026-01-01'),
     updatedAt: new Date('2026-01-01'),
     subscription: {
       id: 'sub-1',
+      userId: 'user-1',
       tier: 'basic',
       status: 'active',
       trialEndsAt: null,
+      currentPeriodStart: null,
+      currentPeriodEnd: null,
+      cancelledAt: null,
       createdAt: new Date('2026-01-01'),
+      updatedAt: new Date('2026-01-01'),
     },
     recentTranscriptions: [
       {
         id: 'tx-1',
+        userId: 'user-1',
+        apiKeyId: 'key-1',
         status: 'completed',
         audioFilename: 'audio.mp3',
+        audioSizeBytes: 1024,
+        audioFormat: 'audio/mpeg',
+        transcribedText: 'Hello world',
+        detectedLanguage: 'en',
+        languageConfidence: 0.99,
+        audioDurationSeconds: 5,
+        processingTimeMs: 1000,
+        errorMessage: null,
+        completedAt: new Date('2026-01-15'),
         createdAt: new Date('2026-01-15'),
+        updatedAt: new Date('2026-01-15'),
       },
     ],
   };
 
-  const mockAuditLogs = [
+  const mockAuditLogs: AuditLog[] = [
     {
       id: 'audit-1',
       adminId: 'admin-uuid',
@@ -104,11 +132,8 @@ describe('AdminService', () => {
 
   describe('listUsers()', () => {
     it('should return paginated list of users with subscription info', async () => {
-      vi.mocked(repoMock.findAdminById).mockResolvedValue({
-        id: adminUser.userId,
-        role: 'admin',
-      } as any);
-      vi.mocked(repoMock.listUsers).mockResolvedValue(mockUsers as any);
+      vi.mocked(repoMock.findAdminById).mockResolvedValue(mockUser(adminUser.userId, 'admin'));
+      vi.mocked(repoMock.listUsers).mockResolvedValue(mockUsers);
       vi.mocked(repoMock.countUsers).mockResolvedValue(2);
 
       const result = await service.listUsers(adminUser.userId, { page: 1, limit: 20 });
@@ -121,10 +146,9 @@ describe('AdminService', () => {
     });
 
     it('should throw ForbiddenError if caller is not admin', async () => {
-      vi.mocked(repoMock.findAdminById).mockResolvedValue({
-        id: customerUser.userId,
-        role: 'customer',
-      } as any);
+      vi.mocked(repoMock.findAdminById).mockResolvedValue(
+        mockUser(customerUser.userId, 'customer'),
+      );
 
       await expect(service.listUsers(customerUser.userId, { page: 1, limit: 20 })).rejects.toThrow(
         ForbiddenError,
@@ -136,11 +160,8 @@ describe('AdminService', () => {
 
   describe('getUserDetails()', () => {
     it('should return user with transcription history and subscription', async () => {
-      vi.mocked(repoMock.findAdminById).mockResolvedValue({
-        id: adminUser.userId,
-        role: 'admin',
-      } as any);
-      vi.mocked(repoMock.getUserWithDetails).mockResolvedValue(mockUserDetails as any);
+      vi.mocked(repoMock.findAdminById).mockResolvedValue(mockUser(adminUser.userId, 'admin'));
+      vi.mocked(repoMock.getUserWithDetails).mockResolvedValue(mockUserDetails);
 
       const result = await service.getUserDetails(adminUser.userId, 'user-1');
 
@@ -150,10 +171,9 @@ describe('AdminService', () => {
     });
 
     it('should throw ForbiddenError if caller is not admin', async () => {
-      vi.mocked(repoMock.findAdminById).mockResolvedValue({
-        id: customerUser.userId,
-        role: 'customer',
-      } as any);
+      vi.mocked(repoMock.findAdminById).mockResolvedValue(
+        mockUser(customerUser.userId, 'customer'),
+      );
 
       await expect(service.getUserDetails(customerUser.userId, 'user-1')).rejects.toThrow(
         ForbiddenError,
@@ -167,10 +187,7 @@ describe('AdminService', () => {
     const updateData = { tier: 'pro' as const, status: 'active' as const };
 
     it('should allow admin to update tier and status of any user', async () => {
-      vi.mocked(repoMock.findAdminById).mockResolvedValue({
-        id: adminUser.userId,
-        role: 'admin',
-      } as any);
+      vi.mocked(repoMock.findAdminById).mockResolvedValue(mockUser(adminUser.userId, 'admin'));
       vi.mocked(repoMock.updateUserSubscription).mockResolvedValue({
         id: 'sub-1',
         userId: 'user-1',
@@ -182,7 +199,7 @@ describe('AdminService', () => {
         currentPeriodStart: null,
         currentPeriodEnd: null,
         cancelledAt: null,
-      } as any);
+      });
 
       const result = await service.updateSubscription(adminUser.userId, 'user-1', updateData);
 
@@ -195,10 +212,9 @@ describe('AdminService', () => {
     });
 
     it('should throw ForbiddenError if caller is not admin', async () => {
-      vi.mocked(repoMock.findAdminById).mockResolvedValue({
-        id: customerUser.userId,
-        role: 'customer',
-      } as any);
+      vi.mocked(repoMock.findAdminById).mockResolvedValue(
+        mockUser(customerUser.userId, 'customer'),
+      );
 
       await expect(
         service.updateSubscription(customerUser.userId, 'user-1', updateData),
@@ -211,11 +227,8 @@ describe('AdminService', () => {
 
   describe('getAuditLog()', () => {
     it('should return paginated audit logs', async () => {
-      vi.mocked(repoMock.findAdminById).mockResolvedValue({
-        id: adminUser.userId,
-        role: 'admin',
-      } as any);
-      vi.mocked(repoMock.getAuditLogs).mockResolvedValue(mockAuditLogs as any);
+      vi.mocked(repoMock.findAdminById).mockResolvedValue(mockUser(adminUser.userId, 'admin'));
+      vi.mocked(repoMock.getAuditLogs).mockResolvedValue(mockAuditLogs);
       vi.mocked(repoMock.countAuditLogs).mockResolvedValue(1);
 
       const result = await service.getAuditLog(adminUser.userId, { page: 1, limit: 20 });
@@ -226,10 +239,9 @@ describe('AdminService', () => {
     });
 
     it('should throw ForbiddenError if caller is not admin', async () => {
-      vi.mocked(repoMock.findAdminById).mockResolvedValue({
-        id: customerUser.userId,
-        role: 'customer',
-      } as any);
+      vi.mocked(repoMock.findAdminById).mockResolvedValue(
+        mockUser(customerUser.userId, 'customer'),
+      );
 
       await expect(
         service.getAuditLog(customerUser.userId, { page: 1, limit: 20 }),
@@ -241,10 +253,7 @@ describe('AdminService', () => {
 
   describe('getDashboardStats()', () => {
     it('should return system totals for admin', async () => {
-      vi.mocked(repoMock.findAdminById).mockResolvedValue({
-        id: adminUser.userId,
-        role: 'admin',
-      } as any);
+      vi.mocked(repoMock.findAdminById).mockResolvedValue(mockUser(adminUser.userId, 'admin'));
       vi.mocked(repoMock.getStats).mockResolvedValue(mockStats);
 
       const result = await service.getDashboardStats(adminUser.userId);
@@ -255,10 +264,9 @@ describe('AdminService', () => {
     });
 
     it('should throw ForbiddenError if caller is not admin', async () => {
-      vi.mocked(repoMock.findAdminById).mockResolvedValue({
-        id: customerUser.userId,
-        role: 'customer',
-      } as any);
+      vi.mocked(repoMock.findAdminById).mockResolvedValue(
+        mockUser(customerUser.userId, 'customer'),
+      );
 
       await expect(service.getDashboardStats(customerUser.userId)).rejects.toThrow(ForbiddenError);
     });

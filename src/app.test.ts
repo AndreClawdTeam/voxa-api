@@ -1,6 +1,14 @@
 import request from 'supertest';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createApp } from './app';
+
+// Mock DB so health check doesn't require a live database connection
+vi.mock('./db', () => ({
+  db: {
+    execute: vi.fn().mockResolvedValue([{ '?column?': 1 }]),
+  },
+  pool: { end: vi.fn() },
+}));
 
 describe('App', () => {
   const app = createApp();
