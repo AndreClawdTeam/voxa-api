@@ -1,3 +1,4 @@
+import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import { sql } from 'drizzle-orm';
 import express from 'express';
@@ -7,7 +8,7 @@ import pinoHttp from 'pino-http';
 import swaggerUi from 'swagger-ui-express';
 import { env } from './config/env';
 import { db } from './db';
-import { AppError } from './lib/errors';
+import { AppError, ValidationError } from './lib/errors';
 import { logger } from './lib/logger';
 import { swaggerSpec } from './lib/swagger';
 import { adminRouter } from './modules/admin/admin.routes';
@@ -23,13 +24,17 @@ export function createApp() {
   // ─── Security headers (helmet removes X-Powered-By, adds CSP, HSTS, etc.) ──
   app.use(helmet());
 
-  // ─── CORS — explicit allowlist in production ──────────────────────────────
+  // ─── Cookie parser — required to read HttpOnly refresh token cookie ────────
+  app.use(cookieParser());
+
+  // ─── CORS — explicit allowlist in production, credentials for cookie support ─
   app.use(
     cors({
       origin:
         env.NODE_ENV === 'production'
-          ? (process.env.ALLOWED_ORIGINS ?? '').split(',').filter(Boolean)
-          : '*',
+          ? env.ALLOWED_ORIGINS // string[] validated by Zod
+          : ['http://localhost:3000', 'http://localhost:5173'],
+      credentials: true, // REQUIRED for cookies (Authorization + Set-Cookie)
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
       allowedHeaders: ['Content-Type', 'Authorization'],
     }),
@@ -87,10 +92,17 @@ export function createApp() {
       _next: express.NextFunction,
     ) => {
       if (err instanceof AppError) {
-        return res.status(err.statusCode).json({
+        const body: Record<string, unknown> = {
           code: err.code,
           message: err.message,
-        });
+        };
+
+        // Include structured field errors for ValidationError
+        if (err instanceof ValidationError && Object.keys(err.errors).length > 0) {
+          body.errors = err.errors;
+        }
+
+        return res.status(err.statusCode).json(body);
       }
 
       // Handle HTTP errors with explicit status codes (e.g. 413 Payload Too Large from express.json)
