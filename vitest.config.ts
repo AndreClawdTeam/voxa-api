@@ -4,6 +4,8 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
+    // Exclude integration tests from unit test runs
+    exclude: ['**/node_modules/**', '**/*.integration.test.ts'],
     env: {
       NODE_ENV: 'test',
       PORT: '3000',

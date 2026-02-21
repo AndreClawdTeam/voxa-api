@@ -6,9 +6,10 @@ import { AuthRepository } from './auth.repository';
 import { AuthService } from './auth.service';
 
 // Brute-force protection on login: max 5 requests per 15 minutes per IP
+// In test mode, limit is raised to avoid interference with integration tests
 const bruteForceLimit = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5,
+  max: process.env.NODE_ENV === 'test' ? 10000 : 5,
   standardHeaders: true,
   legacyHeaders: false,
   message: {
@@ -22,7 +23,7 @@ const bruteForceLimit = rateLimit({
 // DB capacity and trial subscription slots.
 const registerLimit = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5,
+  max: process.env.NODE_ENV === 'test' ? 10000 : 5,
   standardHeaders: true,
   legacyHeaders: false,
   message: {
