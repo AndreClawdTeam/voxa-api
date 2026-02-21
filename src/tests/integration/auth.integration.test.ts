@@ -189,10 +189,7 @@ describe('Auth — Fluxo completo de usuário', () => {
   // ─── Cenário 9: /me com token inválido ──────────────────────────────────────
   it('deve rejeitar /me com token inválido (401)', async () => {
     const api = createTestApp();
-    await api
-      .get('/api/v1/auth/me')
-      .set('Authorization', 'Bearer token.falso.aqui')
-      .expect(401);
+    await api.get('/api/v1/auth/me').set('Authorization', 'Bearer token.falso.aqui').expect(401);
   });
 
   it('deve rejeitar /me sem Authorization header (401)', async () => {
@@ -223,9 +220,6 @@ describe('Auth — Fluxo completo de usuário', () => {
       .expect(204);
 
     // Tentar usar o mesmo refresh token — deve ser rejeitado
-    await api
-      .post('/api/v1/auth/refresh')
-      .set('Cookie', refreshCookie!)
-      .expect(401);
+    await api.post('/api/v1/auth/refresh').set('Cookie', refreshCookie!).expect(401);
   });
 });

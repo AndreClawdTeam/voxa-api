@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ConflictError, UnauthorizedError } from '../../lib/errors';
+import type { SubscriptionsRepository } from '../subscriptions/subscriptions.repository';
 import type { AuthRepository } from './auth.repository';
 import { AuthService } from './auth.service';
 
@@ -32,6 +33,7 @@ vi.mock('bcryptjs', () => ({
 describe('AuthService', () => {
   let service: AuthService;
   let repoMock: AuthRepository;
+  let subscriptionsRepoMock: SubscriptionsRepository;
 
   const mockUser = {
     id: 'user-uuid-123',
@@ -50,9 +52,14 @@ describe('AuthService', () => {
       findByEmail: vi.fn(),
       findById: vi.fn(),
       create: vi.fn(),
-      createSubscription: vi.fn(),
     } as unknown as AuthRepository;
-    service = new AuthService(repoMock);
+    subscriptionsRepoMock = {
+      create: vi.fn(),
+      findByUserId: vi.fn(),
+      updateTier: vi.fn(),
+      cancel: vi.fn(),
+    } as unknown as SubscriptionsRepository;
+    service = new AuthService(repoMock, subscriptionsRepoMock);
   });
 
   // ─── register() ───────────────────────────────────────────────────────────
@@ -67,7 +74,7 @@ describe('AuthService', () => {
     it('should create user with hashed password', async () => {
       vi.mocked(repoMock.findByEmail).mockResolvedValue(undefined);
       vi.mocked(repoMock.create).mockResolvedValue(mockUser);
-      vi.mocked(repoMock.createSubscription).mockResolvedValue({
+      vi.mocked(subscriptionsRepoMock.create).mockResolvedValue({
         id: 'sub-uuid',
         userId: mockUser.id,
         tier: 'trial',
@@ -109,7 +116,7 @@ describe('AuthService', () => {
     it('should create trial subscription on register', async () => {
       vi.mocked(repoMock.findByEmail).mockResolvedValue(undefined);
       vi.mocked(repoMock.create).mockResolvedValue(mockUser);
-      vi.mocked(repoMock.createSubscription).mockResolvedValue({
+      vi.mocked(subscriptionsRepoMock.create).mockResolvedValue({
         id: 'sub-uuid',
         userId: mockUser.id,
         tier: 'trial',
@@ -124,7 +131,7 @@ describe('AuthService', () => {
 
       await service.register(registerData);
 
-      expect(repoMock.createSubscription).toHaveBeenCalledWith(
+      expect(subscriptionsRepoMock.create).toHaveBeenCalledWith(
         expect.objectContaining({
           userId: mockUser.id,
           tier: 'trial',

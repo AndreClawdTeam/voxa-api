@@ -1,11 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createTestApp } from './helpers/app';
-import {
-  cleanDatabase,
-  seedSubscription,
-  seedTranscription,
-  seedUser,
-} from './helpers/db';
+import { cleanDatabase, seedSubscription, seedTranscription, seedUser } from './helpers/db';
 import { uniqueEmail } from './helpers/fixtures';
 
 const api = createTestApp();
@@ -21,10 +16,7 @@ describe('Dashboard — Histórico e estatísticas do usuário', () => {
 
   // ─── Helper: login e retornar accessToken ───────────────────────────────────
   async function loginAs(email: string, password: string): Promise<string> {
-    const res = await api
-      .post('/api/v1/auth/login')
-      .send({ email, password })
-      .expect(200);
+    const res = await api.post('/api/v1/auth/login').send({ email, password }).expect(200);
     return res.body.data.accessToken;
   }
 
@@ -52,7 +44,9 @@ describe('Dashboard — Histórico e estatísticas do usuário', () => {
 
     expect(transRes.body.data).toBeDefined();
     // Deve ser array vazio ou objeto com data vazio
-    const items = Array.isArray(transRes.body.data) ? transRes.body.data : transRes.body.data.data ?? [];
+    const items = Array.isArray(transRes.body.data)
+      ? transRes.body.data
+      : (transRes.body.data.data ?? []);
     expect(items.length).toBe(0);
   });
 
@@ -73,9 +67,7 @@ describe('Dashboard — Histórico e estatísticas do usuário', () => {
       .set('Authorization', `Bearer ${token}`)
       .expect(200);
 
-    const items = Array.isArray(res.body.data)
-      ? res.body.data
-      : res.body.data?.data ?? [];
+    const items = Array.isArray(res.body.data) ? res.body.data : (res.body.data?.data ?? []);
 
     expect(items.length).toBeGreaterThanOrEqual(3);
 
@@ -113,9 +105,7 @@ describe('Dashboard — Histórico e estatísticas do usuário', () => {
       .set('Authorization', `Bearer ${tokenA}`)
       .expect(200);
 
-    const items = Array.isArray(res.body.data)
-      ? res.body.data
-      : res.body.data?.data ?? [];
+    const items = Array.isArray(res.body.data) ? res.body.data : (res.body.data?.data ?? []);
 
     // Nenhuma transcrição de userB deve aparecer
     const hasUserBData = items.some(

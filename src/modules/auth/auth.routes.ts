@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import { authenticate } from '../../middleware/authenticate';
+import { SubscriptionsRepository } from '../subscriptions/subscriptions.repository';
 import { AuthController } from './auth.controller';
 import { AuthRepository } from './auth.repository';
 import { AuthService } from './auth.service';
@@ -46,7 +47,8 @@ const refreshLimit = rateLimit({
 });
 
 const repo = new AuthRepository();
-const service = new AuthService(repo);
+const subscriptionsRepo = new SubscriptionsRepository();
+const service = new AuthService(repo, subscriptionsRepo);
 const controller = new AuthController(service);
 
 export const authRouter = Router();

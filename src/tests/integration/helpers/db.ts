@@ -105,8 +105,7 @@ export interface SeedSubscriptionOptions {
  * Defaults to an active trial subscription expiring in 7 days.
  */
 export async function seedSubscription(options: SeedSubscriptionOptions) {
-  const trialEndsAt =
-    options.trialEndsAt ?? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days from now
+  const trialEndsAt = options.trialEndsAt ?? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days from now
   const now = new Date();
 
   const [subscription] = await testDb
@@ -221,10 +220,7 @@ export async function getSubscriptionByUserId(userId: string) {
 
 /** Fetch all transcriptions for a user from the integration DB. */
 export async function getTranscriptionsByUserId(userId: string) {
-  return testDb
-    .select()
-    .from(transcriptions)
-    .where(eq(transcriptions.userId, userId));
+  return testDb.select().from(transcriptions).where(eq(transcriptions.userId, userId));
 }
 
 /** Fetch all usage logs for a user from the integration DB. */

@@ -66,18 +66,4 @@ export class SubscriptionsRepository {
       .returning();
     return sub;
   }
-
-  /**
-   * Verifica se o usuário possui uma assinatura ativa ou trial válido.
-   *
-   * @param userId - ID do usuário
-   * @returns `true` se ativo ou trial não expirado, `false` caso contrário
-   */
-  async isActive(userId: string): Promise<boolean> {
-    const sub = await this.findByUserId(userId);
-    if (!sub) return false;
-    if (sub.status === 'active') return true;
-    if (sub.status === 'trial' && sub.trialEndsAt && sub.trialEndsAt > new Date()) return true;
-    return false;
-  }
 }

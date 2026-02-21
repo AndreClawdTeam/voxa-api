@@ -7,11 +7,15 @@ import {
   signRefreshToken,
   verifyRefreshToken,
 } from '../../lib/jwt';
+import type { SubscriptionsRepository } from '../subscriptions/subscriptions.repository';
 import type { AuthRepository } from './auth.repository';
 import type { LoginDto, RegisterDto } from './auth.schema';
 
 export class AuthService {
-  constructor(private readonly authRepo: AuthRepository) {}
+  constructor(
+    private readonly authRepo: AuthRepository,
+    private readonly subscriptionsRepo: SubscriptionsRepository,
+  ) {}
 
   /**
    * Registra um novo usuário e cria automaticamente uma assinatura trial.
@@ -38,7 +42,7 @@ export class AuthService {
     const trialEndsAt = new Date();
     trialEndsAt.setDate(trialEndsAt.getDate() + env.TRIAL_DURATION_DAYS);
 
-    await this.authRepo.createSubscription({
+    await this.subscriptionsRepo.create({
       userId: user.id,
       tier: 'trial',
       status: 'trial',

@@ -1,8 +1,9 @@
 import { Router } from 'express';
 import multer from 'multer';
 import { WhisperClient } from '../../lib/whisper';
-import { authenticateApiKey } from '../../middleware/authenticate-api-key';
+import { createAuthenticateApiKey } from '../../middleware/authenticate-api-key';
 import { createTierRateLimit } from '../../middleware/rate-limit-by-tier';
+import { ApiKeysRepository } from '../api-keys/api-keys.repository';
 import { SubscriptionsRepository } from '../subscriptions/subscriptions.repository';
 import { TranscriptionController } from './transcription.controller';
 import { TranscriptionRepository } from './transcription.repository';
@@ -38,6 +39,11 @@ const whisperClient = new WhisperClient();
 const subscriptionsRepo = new SubscriptionsRepository();
 const service = new TranscriptionService(transcriptionRepo, whisperClient, subscriptionsRepo);
 const controller = new TranscriptionController(service);
+
+const authenticateApiKey = createAuthenticateApiKey({
+  apiKeysRepo: new ApiKeysRepository(),
+  subscriptionsRepo,
+});
 
 const tierRateLimit = createTierRateLimit();
 

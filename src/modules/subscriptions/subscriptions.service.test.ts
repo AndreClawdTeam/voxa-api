@@ -40,7 +40,6 @@ describe('SubscriptionsService', () => {
         .fn()
         .mockResolvedValue({ ...activeSubscription, tier: 'pro', status: 'active' }),
       cancel: vi.fn().mockResolvedValue({ ...activeSubscription, status: 'cancelled' }),
-      isActive: vi.fn().mockResolvedValue(true),
     } as unknown as SubscriptionsRepository;
 
     service = new SubscriptionsService(repoMock);

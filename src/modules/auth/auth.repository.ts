@@ -1,12 +1,6 @@
 import { eq } from 'drizzle-orm';
 import { db } from '../../db';
-import {
-  type NewSubscription,
-  type NewUser,
-  type User,
-  subscriptions,
-  users,
-} from '../../db/schema';
+import { type NewUser, type User, users } from '../../db/schema';
 
 export class AuthRepository {
   /**
@@ -40,17 +34,5 @@ export class AuthRepository {
   async create(data: NewUser): Promise<User> {
     const [user] = await db.insert(users).values(data).returning();
     return user;
-  }
-
-  /**
-   * Cria uma assinatura para o usuário recém-registrado.
-   * Normalmente chamado após `create()` para iniciar o período de trial.
-   *
-   * @param data - Dados da assinatura a inserir
-   * @returns Assinatura criada
-   */
-  async createSubscription(data: NewSubscription) {
-    const [subscription] = await db.insert(subscriptions).values(data).returning();
-    return subscription;
   }
 }

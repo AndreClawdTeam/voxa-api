@@ -95,7 +95,6 @@ describe('TranscriptionService', () => {
       findByUserId: vi.fn().mockResolvedValue(activeSubscription),
       updateTier: vi.fn(),
       cancel: vi.fn(),
-      isActive: vi.fn().mockResolvedValue(true),
     } as unknown as SubscriptionsRepository;
 
     service = new TranscriptionService(repoMock, whisperMock, subRepoMock);

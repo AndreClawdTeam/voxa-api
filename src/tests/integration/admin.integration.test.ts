@@ -1,11 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createTestApp } from './helpers/app';
-import {
-  cleanDatabase,
-  seedApiKey,
-  seedSubscription,
-  seedUser,
-} from './helpers/db';
+import { cleanDatabase, seedApiKey, seedSubscription, seedUser } from './helpers/db';
 import { createSilentWavBuffer, uniqueEmail } from './helpers/fixtures';
 
 describe('Admin — Gestão de usuários', () => {
@@ -24,10 +19,7 @@ describe('Admin — Gestão de usuários', () => {
     email: string,
     password: string,
   ): Promise<string> {
-    const res = await api
-      .post('/api/v1/auth/login')
-      .send({ email, password })
-      .expect(200);
+    const res = await api.post('/api/v1/auth/login').send({ email, password }).expect(200);
     return res.body.data.accessToken;
   }
 
@@ -60,7 +52,7 @@ describe('Admin — Gestão de usuários', () => {
     expect(res.body.data).toBeDefined();
     const userList = Array.isArray(res.body.data)
       ? res.body.data
-      : res.body.data?.data ?? res.body.data?.users ?? [];
+      : (res.body.data?.data ?? res.body.data?.users ?? []);
 
     expect(userList.length).toBeGreaterThanOrEqual(4);
   });
@@ -74,15 +66,9 @@ describe('Admin — Gestão de usuários', () => {
 
     const token = await loginAs(api, user.email, user.password);
 
-    await api
-      .get('/api/v1/admin/users')
-      .set('Authorization', `Bearer ${token}`)
-      .expect(403);
+    await api.get('/api/v1/admin/users').set('Authorization', `Bearer ${token}`).expect(403);
 
-    await api
-      .get('/api/v1/admin/stats')
-      .set('Authorization', `Bearer ${token}`)
-      .expect(403);
+    await api.get('/api/v1/admin/stats').set('Authorization', `Bearer ${token}`).expect(403);
   });
 
   // ─── Cenário 3: Admin pode suspender assinatura de usuário ─────────────────
