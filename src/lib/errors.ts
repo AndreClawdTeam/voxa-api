@@ -19,10 +19,14 @@ export class AppError extends Error {
 /**
  * Erro de validação de entrada — 400 Bad Request.
  * Usado quando `req.body`, `req.query` ou `req.params` não satisfazem o schema.
+ * O campo `errors` mapeia cada campo inválido à sua mensagem de erro.
  */
 export class ValidationError extends AppError {
-  constructor(message: string) {
+  public readonly errors: Record<string, string>;
+
+  constructor(message: string, errors: Record<string, string> = {}) {
     super(message, 400, 'VALIDATION_ERROR');
+    this.errors = errors;
   }
 }
 

@@ -3,18 +3,25 @@ import { type ZodTypeAny, z } from 'zod';
 import { ValidationError } from './errors';
 
 /**
- * Extrai a primeira mensagem de erro de um resultado Zod inválido.
+ * Converte um ZodError em um Record<string, string> mapeando cada campo
+ * à sua primeira mensagem de erro. Usada para retornar erros estruturados
+ * ao frontend para mapeamento por campo em formulários.
  *
  * @param error - Objeto ZodError retornado por `.safeParse()`
- * @returns Mensagem de erro amigável para o cliente
+ * @returns Record com campo → primeira mensagem de erro
  */
-function firstZodMessage(error: { errors: Array<{ message: string }> }): string {
-  return error.errors[0]?.message ?? 'Validation failed';
+function zodErrorsToRecord(error: z.ZodError): Record<string, string> {
+  const result: Record<string, string> = {};
+  for (const issue of error.errors) {
+    const field = issue.path.join('.') || '_root';
+    if (!result[field]) result[field] = issue.message;
+  }
+  return result;
 }
 
 /**
  * Valida `req.body` com o schema Zod informado.
- * Lança `ValidationError` se a validação falhar.
+ * Lança `ValidationError` com erros estruturados por campo se a validação falhar.
  *
  * Usa genérico `S extends ZodTypeAny` para suportar schemas com `.transform()`
  * (onde tipos de entrada e saída diferem).
@@ -27,14 +34,16 @@ function firstZodMessage(error: { errors: Array<{ message: string }> }): string 
 export function parseBody<S extends ZodTypeAny>(schema: S, req: Request): z.infer<S> {
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) {
-    throw new ValidationError(firstZodMessage(parsed.error));
+    const errors = zodErrorsToRecord(parsed.error);
+    const firstMessage = Object.values(errors)[0] ?? 'Validation failed';
+    throw new ValidationError(firstMessage, errors);
   }
   return parsed.data;
 }
 
 /**
  * Valida `req.query` com o schema Zod informado.
- * Lança `ValidationError` se a validação falhar.
+ * Lança `ValidationError` com erros estruturados por campo se a validação falhar.
  *
  * Usa genérico `S extends ZodTypeAny` para suportar schemas com `.transform()`
  * (onde tipos de entrada e saída diferem, como paginação string→number).
@@ -47,14 +56,16 @@ export function parseBody<S extends ZodTypeAny>(schema: S, req: Request): z.infe
 export function parseQuery<S extends ZodTypeAny>(schema: S, req: Request): z.infer<S> {
   const parsed = schema.safeParse(req.query);
   if (!parsed.success) {
-    throw new ValidationError(firstZodMessage(parsed.error));
+    const errors = zodErrorsToRecord(parsed.error);
+    const firstMessage = Object.values(errors)[0] ?? 'Validation failed';
+    throw new ValidationError(firstMessage, errors);
   }
   return parsed.data;
 }
 
 /**
  * Valida `req.params` com o schema Zod informado.
- * Lança `ValidationError` se a validação falhar.
+ * Lança `ValidationError` com erros estruturados por campo se a validação falhar.
  *
  * @param schema - Schema Zod para validação
  * @param req - Objeto de requisição do Express
@@ -64,7 +75,9 @@ export function parseQuery<S extends ZodTypeAny>(schema: S, req: Request): z.inf
 export function parseParams<S extends ZodTypeAny>(schema: S, req: Request): z.infer<S> {
   const parsed = schema.safeParse(req.params);
   if (!parsed.success) {
-    throw new ValidationError(firstZodMessage(parsed.error));
+    const errors = zodErrorsToRecord(parsed.error);
+    const firstMessage = Object.values(errors)[0] ?? 'Validation failed';
+    throw new ValidationError(firstMessage, errors);
   }
   return parsed.data;
 }
