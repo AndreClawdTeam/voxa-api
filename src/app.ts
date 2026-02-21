@@ -1,5 +1,6 @@
 import express from 'express';
 import { AppError } from './lib/errors';
+import { authRouter } from './modules/auth/auth.routes';
 
 export function createApp() {
   const app = express();
@@ -11,6 +12,9 @@ export function createApp() {
   app.get('/health', (_req, res) => {
     res.json({ status: 'ok', uptime: process.uptime() });
   });
+
+  // API routes
+  app.use('/api/v1/auth', authRouter);
 
   // Error handler global
   app.use(
