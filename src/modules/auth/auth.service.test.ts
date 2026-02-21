@@ -172,18 +172,40 @@ describe('AuthService', () => {
   // ─── refreshToken() ───────────────────────────────────────────────────────
 
   describe('refreshToken()', () => {
-    it('should return new access token for valid refresh token', async () => {
+    it('should return new access token and refresh token (token rotation)', async () => {
       const jwt = await import('../../lib/jwt');
       vi.mocked(jwt.verifyRefreshToken).mockReturnValue({
         userId: mockUser.id,
         jti: 'test-jti',
+        exp: Math.floor(Date.now() / 1000) + 3600,
       } as never);
       vi.mocked(repoMock.findById).mockResolvedValue(mockUser);
 
       const result = await service.refreshToken('valid-refresh-token');
 
       expect(jwt.verifyRefreshToken).toHaveBeenCalledWith('valid-refresh-token');
-      expect(result).toMatchObject({ accessToken: 'mock-access-token' });
+      // Token rotation: old token is revoked
+      expect(jwt.revokeRefreshToken).toHaveBeenCalledWith('test-jti', expect.any(Number));
+      // New tokens issued
+      expect(result).toMatchObject({
+        accessToken: 'mock-access-token',
+        refreshToken: 'mock-refresh-token',
+      });
+    });
+
+    it('should revoke the old refresh token before issuing a new one', async () => {
+      const jwt = await import('../../lib/jwt');
+      const tokenExp = Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60;
+      vi.mocked(jwt.verifyRefreshToken).mockReturnValue({
+        userId: mockUser.id,
+        jti: 'rotation-jti',
+        exp: tokenExp,
+      } as never);
+      vi.mocked(repoMock.findById).mockResolvedValue(mockUser);
+
+      await service.refreshToken('some-token');
+
+      expect(jwt.revokeRefreshToken).toHaveBeenCalledWith('rotation-jti', tokenExp * 1000);
     });
 
     it('should throw UnauthorizedError for invalid/expired token', async () => {
@@ -203,6 +225,19 @@ describe('AuthService', () => {
 
       await expect(service.refreshToken('revoked-token')).rejects.toThrow(UnauthorizedError);
       await expect(service.refreshToken('revoked-token')).rejects.toThrow('revoked');
+    });
+
+    it('should throw UnauthorizedError when user not found after token validation', async () => {
+      const jwt = await import('../../lib/jwt');
+      vi.mocked(jwt.verifyRefreshToken).mockReturnValue({
+        userId: 'non-existent-id',
+        jti: 'some-jti',
+        exp: Math.floor(Date.now() / 1000) + 3600,
+      } as never);
+      vi.mocked(repoMock.findById).mockResolvedValue(undefined);
+
+      await expect(service.refreshToken('valid-token')).rejects.toThrow(UnauthorizedError);
+      await expect(service.refreshToken('valid-token')).rejects.toThrow('User not found');
     });
   });
 

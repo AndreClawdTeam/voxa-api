@@ -89,12 +89,14 @@ export class AuthService {
 
   /**
    * Renova o access token usando um refresh token válido (não expirado e não revogado).
+   * Implementa token rotation: o refresh token atual é revogado e um novo é emitido,
+   * prevenindo o uso indefinido de tokens roubados.
    *
    * @param token - Refresh token JWT
-   * @returns Novo `{ accessToken }`
+   * @returns Novo par `{ accessToken, refreshToken }`
    * @throws {UnauthorizedError} Se o token for inválido, expirado ou revogado
    */
-  async refreshToken(token: string) {
+  async refreshToken(token: string): Promise<{ accessToken: string; refreshToken: string }> {
     // verifyRefreshToken validates iss/aud, expiry, AND checks the jti blacklist
     const payload = verifyRefreshToken(token);
 
@@ -103,8 +105,15 @@ export class AuthService {
       throw new UnauthorizedError('User not found');
     }
 
+    // Revogar o refresh token atual (rotation — previne reutilização após renovação)
+    const exp = payload.exp ? payload.exp * 1000 : Date.now() + 7 * 24 * 60 * 60 * 1000;
+    revokeRefreshToken(payload.jti, exp);
+
+    // Emitir novos tokens
     const accessToken = signAccessToken({ userId: user.id, role: user.role });
-    return { accessToken };
+    const refreshToken = signRefreshToken({ userId: user.id });
+
+    return { accessToken, refreshToken };
   }
 
   /**
