@@ -1,11 +1,21 @@
 import * as crypto from 'node:crypto';
-import { ForbiddenError } from '../../lib/errors';
+import { ForbiddenError, ValidationError } from '../../lib/errors';
 import type { ApiKeysRepository, PublicApiKey } from './api-keys.repository';
 
 export class ApiKeysService {
   constructor(private readonly apiKeysRepo: ApiKeysRepository) {}
 
+  static readonly MAX_KEYS_PER_USER = 10;
+
   async createKey(userId: string, label: string) {
+    // Enforce per-user limit to prevent API key hoarding / DoS on auth lookups
+    const existingCount = await this.apiKeysRepo.countByUserId(userId);
+    if (existingCount >= ApiKeysService.MAX_KEYS_PER_USER) {
+      throw new ValidationError(
+        `Maximum of ${ApiKeysService.MAX_KEYS_PER_USER} API keys per account`,
+      );
+    }
+
     // Generate token: vxa_ + 64 hex chars (32 random bytes)
     const rawToken = `vxa_${crypto.randomBytes(32).toString('hex')}`;
 

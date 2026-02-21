@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ForbiddenError } from '../../lib/errors';
+import { ForbiddenError, ValidationError } from '../../lib/errors';
 import type { ApiKeysRepository } from './api-keys.repository';
 import { ApiKeysService } from './api-keys.service';
 
@@ -38,12 +38,28 @@ describe('ApiKeysService', () => {
       findByHash: vi.fn().mockResolvedValue(mockApiKey),
       revoke: vi.fn().mockResolvedValue({ ...mockApiKey, isRevoked: true }),
       updateLastUsed: vi.fn().mockResolvedValue(undefined),
+      countByUserId: vi.fn().mockResolvedValue(0), // default: no existing keys
     } as unknown as ApiKeysRepository;
 
     service = new ApiKeysService(repoMock);
   });
 
   describe('createKey()', () => {
+    it('should throw ValidationError when user already has 10 active keys', async () => {
+      vi.mocked(repoMock.countByUserId).mockResolvedValue(10);
+
+      await expect(service.createKey('user-uuid-456', 'Key 11')).rejects.toThrow(ValidationError);
+      await expect(service.createKey('user-uuid-456', 'Key 11')).rejects.toThrow('Maximum of 10');
+      expect(repoMock.create).not.toHaveBeenCalled();
+    });
+
+    it('should allow creating key when user has 9 active keys (below limit)', async () => {
+      vi.mocked(repoMock.countByUserId).mockResolvedValue(9);
+      const result = await service.createKey('user-uuid-456', 'Key 10');
+      expect(result.rawToken).toMatch(/^vxa_/);
+      expect(repoMock.create).toHaveBeenCalled();
+    });
+
     it('should generate a token with vxa_ prefix and 64 hex chars', async () => {
       const result = await service.createKey('user-uuid-456', 'My API Key');
 

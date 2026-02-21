@@ -1,4 +1,4 @@
-import { and, eq } from 'drizzle-orm';
+import { and, count, eq } from 'drizzle-orm';
 import { db } from '../../db';
 import { type ApiKey, type NewApiKey, apiKeys } from '../../db/schema';
 
@@ -45,5 +45,13 @@ export class ApiKeysRepository {
 
   async updateLastUsed(id: string): Promise<void> {
     await db.update(apiKeys).set({ lastUsedAt: new Date() }).where(eq(apiKeys.id, id));
+  }
+
+  async countByUserId(userId: string): Promise<number> {
+    const [{ value }] = await db
+      .select({ value: count() })
+      .from(apiKeys)
+      .where(and(eq(apiKeys.userId, userId), eq(apiKeys.isRevoked, false)));
+    return value ?? 0;
   }
 }
