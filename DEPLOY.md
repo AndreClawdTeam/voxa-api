@@ -87,6 +87,48 @@ systemctl restart voxa-api
 
 ---
 
+## Troubleshooting
+
+### Swagger tela branca / ERR_SSL_PROTOCOL_ERROR
+
+**Problema:** Ao acessar `http://<IP>:3000/api/docs` pelo browser, a página fica em branco ou dá `ERR_SSL_PROTOCOL_ERROR`.
+
+**Causa:** O `helmet()` com configurações default envia dois headers problemáticos num servidor HTTP sem TLS:
+1. **`Strict-Transport-Security` (HSTS)** — força o browser a usar HTTPS em requests futuros. Como a VPS roda em HTTP puro, o browser tenta `https://` e recebe `ERR_SSL_PROTOCOL_ERROR`.
+2. **`Content-Security-Policy` default** — bloqueia scripts `unsafe-inline`, que o Swagger UI precisa para renderizar.
+
+**Solução aplicada em `src/app.ts`:**
+```typescript
+app.use(
+  helmet({
+    hsts: false,                         // VPS roda em HTTP — sem TLS
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'", "'unsafe-inline'"],   // Swagger UI precisa disso
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        imgSrc: ["'self'", 'data:', 'https:'],
+        connectSrc: ["'self'"],
+        fontSrc: ["'self'", 'data:'],
+        objectSrc: ["'none'"],
+        upgradeInsecureRequests: null,   // disable — não usamos HTTPS
+      },
+    },
+  }),
+);
+```
+
+**Verificação:**
+```bash
+# Deve retornar 200
+curl -s -o /dev/null -w "%{http_code}\n" http://localhost:3000/api/docs/
+
+# NÃO deve ter Strict-Transport-Security
+curl -sI http://localhost:3000/api/docs/ | grep -i "strict-transport"
+```
+
+---
+
 ## Deployment inicial (2026-02-22)
 
 - Banco `voxa_db` criado no PostgreSQL nativo
