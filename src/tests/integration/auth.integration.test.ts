@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { z } from 'zod';
 import { createTestApp } from './helpers/app';
 import { cleanDatabase, getSubscriptionByUserId, seedUser } from './helpers/db';
 import { uniqueEmail } from './helpers/fixtures';
@@ -39,7 +40,10 @@ describe('Auth — Fluxo completo de usuário', () => {
     expect(sub?.trialEndsAt).toBeDefined();
 
     // trialEndsAt deve ser ~7 dias no futuro (entre 6 e 8 dias)
-    const trialEndsAt = new Date(sub!.trialEndsAt!);
+    const trialEndsAtResult = z.date().safeParse(sub?.trialEndsAt);
+    if (!trialEndsAtResult.success)
+      throw new Error(`Expected trialEndsAt to be a Date: ${trialEndsAtResult.error.message}`);
+    const trialEndsAt = trialEndsAtResult.data;
     const sixDaysFromNow = new Date(Date.now() + 6 * 24 * 60 * 60 * 1000);
     const eightDaysFromNow = new Date(Date.now() + 8 * 24 * 60 * 60 * 1000);
     expect(trialEndsAt.getTime()).toBeGreaterThan(sixDaysFromNow.getTime());
@@ -145,9 +149,15 @@ describe('Auth — Fluxo completo de usuário', () => {
     const refreshCookie = cookies.find((c: string) => c.startsWith('refreshToken='));
     expect(refreshCookie).toBeDefined();
 
+    const refreshCookieResult = z.string().safeParse(refreshCookie);
+    if (!refreshCookieResult.success)
+      throw new Error(
+        `Expected refreshCookie to be a string: ${refreshCookieResult.error.message}`,
+      );
+
     const refreshRes = await api
       .post('/api/v1/auth/refresh')
-      .set('Cookie', refreshCookie!)
+      .set('Cookie', refreshCookieResult.data)
       .expect(200);
 
     const newAccessToken = refreshRes.body.data.accessToken;
@@ -212,14 +222,23 @@ describe('Auth — Fluxo completo de usuário', () => {
     const refreshCookie = cookies.find((c: string) => c.startsWith('refreshToken='));
     expect(refreshCookie).toBeDefined();
 
+    const refreshCookieLogoutResult = z.string().safeParse(refreshCookie);
+    if (!refreshCookieLogoutResult.success)
+      throw new Error(
+        `Expected refreshCookie to be a string: ${refreshCookieLogoutResult.error.message}`,
+      );
+
     // Fazer logout — precisa enviar o cookie para o servidor poder revogar o jti
     await api
       .post('/api/v1/auth/logout')
       .set('Authorization', `Bearer ${accessToken}`)
-      .set('Cookie', refreshCookie!)
+      .set('Cookie', refreshCookieLogoutResult.data)
       .expect(204);
 
     // Tentar usar o mesmo refresh token — deve ser rejeitado
-    await api.post('/api/v1/auth/refresh').set('Cookie', refreshCookie!).expect(401);
+    await api
+      .post('/api/v1/auth/refresh')
+      .set('Cookie', refreshCookieLogoutResult.data)
+      .expect(401);
   });
 });

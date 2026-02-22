@@ -13,7 +13,7 @@ const envSchema = z.object({
   RATE_LIMIT_PRO_RPM: z.string().transform(Number).default('300'),
   TRIAL_DURATION_DAYS: z.string().transform(Number).default('7'),
   LOG_LEVEL: z.enum(['trace', 'debug', 'info', 'warn', 'error']).default('info'),
-  WHISPER_PYTHON: z.string().default('python3'),
+  WHISPER_URL: z.string().url().default('http://127.0.0.1:8765'),
   ALLOWED_ORIGINS: z
     .string()
     .default('')

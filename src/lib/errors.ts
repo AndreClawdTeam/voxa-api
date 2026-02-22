@@ -79,3 +79,13 @@ export class TooManyRequestsError extends AppError {
     super(message, 429, 'RATE_LIMIT_EXCEEDED');
   }
 }
+
+/**
+ * Erro de transcrição — 503 Service Unavailable.
+ * O serviço Whisper está indisponível ou retornou resultado inválido.
+ */
+export class TranscriptionError extends AppError {
+  constructor(message = 'Transcription service unavailable') {
+    super(message, 503, 'TRANSCRIPTION_FAILED');
+  }
+}

@@ -1,10 +1,10 @@
-import { spawn } from 'node:child_process';
-import * as fs from 'node:fs';
-import * as os from 'node:os';
-import * as path from 'node:path';
+import * as http from 'node:http';
+import { z } from 'zod';
 import { env } from '../config/env';
+import { TranscriptionError } from './errors';
+import { logger } from './logger';
 
-/** Resultado retornado pelo faster-whisper após transcrição. */
+/** Resultado retornado pelo servidor Whisper após transcrição. */
 export interface WhisperResult {
   text: string;
   language: string;
@@ -13,96 +13,124 @@ export interface WhisperResult {
 }
 
 /**
- * Cliente para transcrição de áudio usando o faster-whisper (modelo `small`, CPU).
+ * Schema Zod para validação em runtime da resposta do servidor Whisper HTTP
+ * (compatível com Deepgram).
+ * @internal
+ */
+const WhisperAlternativeSchema = z.object({
+  transcript: z.string(),
+  confidence: z.number(),
+});
+
+const WhisperServerResponseSchema = z.object({
+  results: z.object({
+    channels: z.array(
+      z.object({
+        alternatives: z.array(WhisperAlternativeSchema),
+      }),
+    ),
+  }),
+});
+
+type WhisperServerResponse = z.infer<typeof WhisperServerResponseSchema>;
+
+/**
+ * Cliente para transcrição de áudio usando o servidor Whisper HTTP
+ * (`http://127.0.0.1:8765/v1/listen` — faster-whisper, modelo `small`, CPU).
  *
- * Escreve o buffer de áudio em um arquivo temporário, executa o Python com o script
- * do faster-whisper passando o caminho como argumento (não interpolado no script —
- * prevenção de code injection), e remove o arquivo ao terminar.
+ * Em vez de spawnar Python diretamente (que exigiria o virtualenv correto),
+ * delega ao servidor HTTP que já está em execução com o ambiente configurado.
+ *
+ * Interface pública mantida idêntica para não quebrar o `TranscriptionService`.
  */
 export class WhisperClient {
   /**
-   * Transcreve um buffer de áudio.
+   * Transcreve um buffer de áudio chamando o servidor Whisper HTTP.
    *
    * @param buffer - Buffer binário do arquivo de áudio
-   * @param mimetype - MIME type do áudio (usado para determinar a extensão do arquivo temporário)
+   * @param mimetype - MIME type do áudio (enviado como Content-Type ao servidor)
    * @returns Resultado da transcrição com texto, idioma, confiança e duração
-   * @throws {Error} Se o processo Whisper falhar ou retornar output inválido
+   * @throws {TranscriptionError} Se o servidor Whisper estiver indisponível ou retornar erro
    */
   async transcribe(buffer: Buffer, mimetype: string): Promise<WhisperResult> {
-    const ext = this.getExtension(mimetype);
-    const tmpPath = path.join(os.tmpdir(), `voxa_${Date.now()}.${ext}`);
-    await fs.promises.writeFile(tmpPath, buffer);
+    const raw = await this.callWhisperServer(buffer, mimetype);
 
+    let jsonData: unknown;
     try {
-      const result = await this.runWhisper(tmpPath);
-      return result;
-    } finally {
-      await fs.promises.unlink(tmpPath).catch(() => {});
+      jsonData = JSON.parse(raw);
+    } catch (err) {
+      logger.error({ err }, 'Whisper server returned invalid JSON');
+      throw new TranscriptionError(`Whisper server returned invalid JSON: ${raw.slice(0, 200)}`);
     }
-  }
 
-  /**
-   * Executa o script Python do faster-whisper em um processo filho.
-   *
-   * O caminho do arquivo é passado como `sys.argv[1]` — nunca interpolado no código Python.
-   * Isso previne injeção de código caso o caminho contenha caracteres especiais.
-   *
-   * @param filePath - Caminho absoluto do arquivo de áudio temporário
-   * @returns Resultado da transcrição parseado do JSON produzido pelo script
-   * @throws {Error} Se o processo falhar (exit code ≠ 0) ou o output não for JSON válido
-   */
-  private async runWhisper(filePath: string): Promise<WhisperResult> {
-    return new Promise((resolve, reject) => {
-      // SECURITY: filePath is passed as sys.argv[1] — NOT interpolated into the script string.
-      // Interpolating user-controlled (or even system-generated) paths into Python source code
-      // is a code injection pattern. Passing it as an argument is the safe approach.
-      const script = `
-import json, sys
-from faster_whisper import WhisperModel
-audio_path = sys.argv[1]
-model = WhisperModel("small", device="cpu", compute_type="int8")
-segments, info = model.transcribe(audio_path, beam_size=5)
-text = " ".join(s.text.strip() for s in segments)
-print(json.dumps({"text": text, "language": info.language, "confidence": float(info.language_probability), "durationSeconds": float(info.duration)}))
-`;
-      const proc = spawn(env.WHISPER_PYTHON, ['-c', script, filePath]);
-      let stdout = '';
-      let stderr = '';
-      proc.stdout.on('data', (d) => {
-        stdout += d;
-      });
-      proc.stderr.on('data', (d) => {
-        stderr += d;
-      });
-      proc.on('close', (code) => {
-        if (code !== 0) return reject(new Error(`Whisper failed: ${stderr}`));
-        try {
-          resolve(JSON.parse(stdout.trim()));
-        } catch {
-          reject(new Error(`Invalid whisper output: ${stdout}`));
-        }
-      });
-    });
-  }
+    const parseResult = WhisperServerResponseSchema.safeParse(jsonData);
+    if (!parseResult.success) {
+      logger.error(
+        { err: parseResult.error },
+        'Whisper server response did not match expected schema',
+      );
+      throw new TranscriptionError('Whisper server returned unexpected response shape');
+    }
 
-  /**
-   * Mapeia um MIME type para a extensão de arquivo correspondente.
-   * Usado para nomear o arquivo temporário gravado antes de chamar o Whisper.
-   *
-   * @param mimetype - MIME type do áudio
-   * @returns Extensão de arquivo (sem ponto), ex.: `'mp3'`, `'wav'`
-   */
-  private getExtension(mimetype: string): string {
-    const map: Record<string, string> = {
-      'audio/mpeg': 'mp3',
-      'audio/wav': 'wav',
-      'audio/ogg': 'ogg',
-      'audio/mp4': 'mp4',
-      'audio/x-m4a': 'm4a',
-      'audio/flac': 'flac',
-      'audio/webm': 'webm',
-      'video/webm': 'webm',
+    const alternative = parseResult.data.results.channels[0]?.alternatives[0];
+    if (!alternative) {
+      throw new TranscriptionError('Whisper server returned empty transcription');
+    }
+
+    return {
+      text: alternative.transcript,
+      language: 'pt-br',
+      confidence: alternative.confidence,
+      durationSeconds: 0, // HTTP server does not return duration — informational field only
     };
-    return map[mimetype] ?? 'mp3';
+  }
+
+  /**
+   * Faz a requisição HTTP ao servidor Whisper e retorna o body bruto.
+   *
+   * @param buffer - Bytes do arquivo de áudio
+   * @param mimetype - Content-Type a ser enviado ao servidor
+   * @returns Body da resposta como string JSON
+   * @throws {TranscriptionError} Se o servidor retornar status ≠ 200 ou não estiver acessível
+   */
+  private callWhisperServer(buffer: Buffer, mimetype: string): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const url = new URL('/v1/listen', env.WHISPER_URL);
+      const options: http.RequestOptions = {
+        hostname: url.hostname,
+        port: Number(url.port) || 8765,
+        path: url.pathname,
+        method: 'POST',
+        headers: {
+          'Content-Type': mimetype,
+          'Content-Length': buffer.length,
+        },
+      };
+
+      const req = http.request(options, (res) => {
+        let data = '';
+        res.on('data', (chunk: Buffer | string) => {
+          data += chunk;
+        });
+        res.on('end', () => {
+          if (res.statusCode !== 200) {
+            reject(
+              new TranscriptionError(
+                `Whisper server returned HTTP ${res.statusCode}: ${data.slice(0, 200)}`,
+              ),
+            );
+            return;
+          }
+          resolve(data);
+        });
+      });
+
+      req.on('error', (err: Error) => {
+        reject(new TranscriptionError(`Whisper server unreachable: ${err.message}`));
+      });
+
+      req.write(buffer);
+      req.end();
+    });
   }
 }
