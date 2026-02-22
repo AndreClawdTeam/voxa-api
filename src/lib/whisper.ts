@@ -1,6 +1,8 @@
 import * as http from 'node:http';
+import { z } from 'zod';
 import { env } from '../config/env';
 import { TranscriptionError } from './errors';
+import { logger } from './logger';
 
 /** Resultado retornado pelo servidor Whisper após transcrição. */
 export interface WhisperResult {
@@ -11,19 +13,26 @@ export interface WhisperResult {
 }
 
 /**
- * Formato de resposta do servidor Whisper HTTP (compatível com Deepgram).
+ * Schema Zod para validação em runtime da resposta do servidor Whisper HTTP
+ * (compatível com Deepgram).
  * @internal
  */
-interface WhisperServerResponse {
-  results: {
-    channels: Array<{
-      alternatives: Array<{
-        transcript: string;
-        confidence: number;
-      }>;
-    }>;
-  };
-}
+const WhisperAlternativeSchema = z.object({
+  transcript: z.string(),
+  confidence: z.number(),
+});
+
+const WhisperServerResponseSchema = z.object({
+  results: z.object({
+    channels: z.array(
+      z.object({
+        alternatives: z.array(WhisperAlternativeSchema),
+      }),
+    ),
+  }),
+});
+
+type WhisperServerResponse = z.infer<typeof WhisperServerResponseSchema>;
 
 /**
  * Cliente para transcrição de áudio usando o servidor Whisper HTTP
@@ -46,21 +55,31 @@ export class WhisperClient {
   async transcribe(buffer: Buffer, mimetype: string): Promise<WhisperResult> {
     const raw = await this.callWhisperServer(buffer, mimetype);
 
-    let parsed: WhisperServerResponse;
+    let jsonData: unknown;
     try {
-      parsed = JSON.parse(raw) as WhisperServerResponse;
-    } catch {
+      jsonData = JSON.parse(raw);
+    } catch (err) {
+      logger.error({ err }, 'Whisper server returned invalid JSON');
       throw new TranscriptionError(`Whisper server returned invalid JSON: ${raw.slice(0, 200)}`);
     }
 
-    const alternative = parsed?.results?.channels?.[0]?.alternatives?.[0];
-    if (!alternative) {
+    const parseResult = WhisperServerResponseSchema.safeParse(jsonData);
+    if (!parseResult.success) {
+      logger.error(
+        { err: parseResult.error },
+        'Whisper server response did not match expected schema',
+      );
       throw new TranscriptionError('Whisper server returned unexpected response shape');
+    }
+
+    const alternative = parseResult.data.results.channels[0]?.alternatives[0];
+    if (!alternative) {
+      throw new TranscriptionError('Whisper server returned empty transcription');
     }
 
     return {
       text: alternative.transcript,
-      language: 'unknown', // HTTP server does not return language info — can be improved later
+      language: 'pt-br',
       confidence: alternative.confidence,
       durationSeconds: 0, // HTTP server does not return duration — informational field only
     };
