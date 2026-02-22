@@ -132,12 +132,25 @@ export function createApp() {
         });
       }
 
-      // Stack trace ONLY in development — never leak internals in production
-      logger.error({ err }, 'Unhandled error');
+      // ALWAYS log full stack trace server-side — never send stack to client in production
+      logger.error(
+        {
+          err: {
+            message: err instanceof Error ? err.message : String(err),
+            stack: err instanceof Error ? err.stack : undefined,
+            code: (err as AppError).code,
+            statusCode: (err as AppError).statusCode,
+          },
+        },
+        'Unhandled error',
+      );
       return res.status(500).json({
         code: 'INTERNAL_ERROR',
-        message: 'Internal server error',
-        ...(env.NODE_ENV === 'development' && { stack: err.stack }),
+        message: 'Erro interno. Tente novamente ou contate o suporte.',
+        // Stack apenas em desenvolvimento — nunca vazar internals em produção
+        ...(env.NODE_ENV === 'development' && {
+          stack: err instanceof Error ? err.stack : undefined,
+        }),
       });
     },
   );

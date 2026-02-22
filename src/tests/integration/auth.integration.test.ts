@@ -39,7 +39,7 @@ describe('Auth — Fluxo completo de usuário', () => {
     expect(sub?.trialEndsAt).toBeDefined();
 
     // trialEndsAt deve ser ~7 dias no futuro (entre 6 e 8 dias)
-    const trialEndsAt = new Date(sub!.trialEndsAt!);
+    const trialEndsAt = new Date(sub?.trialEndsAt as Date);
     const sixDaysFromNow = new Date(Date.now() + 6 * 24 * 60 * 60 * 1000);
     const eightDaysFromNow = new Date(Date.now() + 8 * 24 * 60 * 60 * 1000);
     expect(trialEndsAt.getTime()).toBeGreaterThan(sixDaysFromNow.getTime());
@@ -147,7 +147,7 @@ describe('Auth — Fluxo completo de usuário', () => {
 
     const refreshRes = await api
       .post('/api/v1/auth/refresh')
-      .set('Cookie', refreshCookie!)
+      .set('Cookie', refreshCookie as string)
       .expect(200);
 
     const newAccessToken = refreshRes.body.data.accessToken;
@@ -216,10 +216,13 @@ describe('Auth — Fluxo completo de usuário', () => {
     await api
       .post('/api/v1/auth/logout')
       .set('Authorization', `Bearer ${accessToken}`)
-      .set('Cookie', refreshCookie!)
+      .set('Cookie', refreshCookie as string)
       .expect(204);
 
     // Tentar usar o mesmo refresh token — deve ser rejeitado
-    await api.post('/api/v1/auth/refresh').set('Cookie', refreshCookie!).expect(401);
+    await api
+      .post('/api/v1/auth/refresh')
+      .set('Cookie', refreshCookie as string)
+      .expect(401);
   });
 });
