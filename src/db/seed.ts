@@ -63,6 +63,42 @@ async function seed() {
 
   console.log(`✅ Admin user: admin@voxa.dev (id: ${adminUser?.id})`);
 
+  // ─── Pro subscription for admin user ────────────────────────────────────────
+  if (adminUser) {
+    const now = new Date();
+    const nextMonth = new Date(now);
+    nextMonth.setMonth(nextMonth.getMonth() + 1);
+
+    const [existingAdminSub] = await db
+      .select()
+      .from(schema.subscriptions)
+      .where(eq(schema.subscriptions.userId, adminUser.id))
+      .limit(1);
+
+    if (existingAdminSub) {
+      await db
+        .update(schema.subscriptions)
+        .set({
+          tier: 'pro',
+          status: 'active',
+          currentPeriodStart: now,
+          currentPeriodEnd: nextMonth,
+          updatedAt: new Date(),
+        })
+        .where(eq(schema.subscriptions.id, existingAdminSub.id));
+    } else {
+      await db.insert(schema.subscriptions).values({
+        userId: adminUser.id,
+        tier: 'pro',
+        status: 'active',
+        currentPeriodStart: now,
+        currentPeriodEnd: nextMonth,
+      });
+    }
+
+    console.log('✅ Pro subscription created for admin@voxa.dev');
+  }
+
   // ─── Test user ───────────────────────────────────────────────────────────────
   const testPasswordHash = await bcrypt.hash('test123', 10);
 
@@ -127,7 +163,7 @@ async function seed() {
 
   await pool.end();
   console.log('\n🎉 Seed completed!');
-  console.log('   admin@voxa.dev / admin123  (role: admin)');
+  console.log('   admin@voxa.dev / admin123  (role: admin, plan: pro)');
   console.log('   test@voxa.dev  / test123   (role: customer, plan: basic)');
 }
 
