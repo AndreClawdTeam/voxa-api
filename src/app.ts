@@ -22,7 +22,25 @@ export function createApp() {
   const app = express();
 
   // ─── Security headers (helmet removes X-Powered-By, adds CSP, HSTS, etc.) ──
-  app.use(helmet());
+  app.use(
+    helmet({
+      // Disable HSTS — VPS runs on plain HTTP (no TLS termination)
+      // Enabling HSTS on HTTP forces the browser into HTTPS → ERR_SSL_PROTOCOL_ERROR
+      hsts: false,
+      contentSecurityPolicy: {
+        directives: {
+          defaultSrc: ["'self'"],
+          scriptSrc: ["'self'", "'unsafe-inline'"],
+          styleSrc: ["'self'", "'unsafe-inline'"],
+          imgSrc: ["'self'", 'data:', 'https:'],
+          connectSrc: ["'self'"],
+          fontSrc: ["'self'", 'data:'],
+          objectSrc: ["'none'"],
+          upgradeInsecureRequests: null, // disable — not using HTTPS
+        },
+      },
+    }),
+  );
 
   // ─── Cookie parser — required to read HttpOnly refresh token cookie ────────
   app.use(cookieParser());
